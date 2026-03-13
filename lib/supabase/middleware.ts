@@ -32,7 +32,11 @@ export async function updateSession(request: NextRequest) {
   } = await supabase.auth.getUser()
 
   // Si no hay usuario y trata de ir a rutas protegidas (dashboard u operator)
-  if (!user && !request.nextUrl.pathname.startsWith('/login')) {
+  if (
+    !user && 
+    !request.nextUrl.pathname.startsWith('/login') &&
+    !request.nextUrl.pathname.startsWith('/setup')
+  ) {
     const url = request.nextUrl.clone()
     url.pathname = '/login'
     return NextResponse.redirect(url)
