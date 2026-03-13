@@ -1,6 +1,6 @@
 -- Función especial para crear el Súper Administrador y su Empresa Inicial.
 -- Se ejecuta con privilegios de administrador (SECURITY DEFINER) para evadir RLS.
-create or replace function public.setup_initial_tenant(new_company_name text, user_full_name text)
+create or replace function public.setup_initial_tenant(new_company_name text, user_full_name text, target_user_id uuid)
 returns jsonb
 language plpgsql
 security definer
@@ -16,8 +16,8 @@ begin
     return '{"error": "El sistema ya ha sido inicializado. Contacte a soporte."}'::jsonb;
   end if;
 
-  if auth.uid() is null then
-    return '{"error": "Usuario no autenticado."}'::jsonb;
+  if target_user_id is null then
+    return '{"error": "Usuario no encontrado."}'::jsonb;
   end if;
 
   -- 2. Crear la Empresa
@@ -25,7 +25,7 @@ begin
 
   -- 3. Insertar el Perfil Super Admin atado a esa empresa
   insert into public.profiles (id, company_id, role, full_name)
-  values (auth.uid(), new_company_id, 'superadmin', user_full_name);
+  values (target_user_id, new_company_id, 'superadmin', user_full_name);
 
   return '{"success": true}'::jsonb;
 end;

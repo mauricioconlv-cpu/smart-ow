@@ -37,10 +37,12 @@ export async function setupSuperAdmin(prevState: any, formData: FormData) {
   }
 
   // 3. Implicar a la Base de Datos para que ejecute el RPC de inicialización
-  // El usuario ya existe en Auth, por lo que la función RPC detectará su ID al llamarla.
+  // El usuario ya existe en Auth, pasamos explícitamente su ID generada (así no dependemos 
+  // de si confirmó su email o no para que exista el registro SaaS).
   const { data: rpcData, error: rpcError } = await supabase.rpc('setup_initial_tenant', {
     new_company_name: companyName,
-    user_full_name: fullName
+    user_full_name: fullName,
+    target_user_id: authData.user.id
   })
 
   // 4. Si falló la inserción SaaS (ej. ya existía empresa), la info en auth queda huerfana
