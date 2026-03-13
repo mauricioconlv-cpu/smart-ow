@@ -1,11 +1,34 @@
 -- Habilitar extensión para UUIDs
 create extension if not exists "uuid-ossp";
 
+-- 0. Limpieza (Peligro: Borra datos existentes, útil en Setup)
+drop table if exists public.service_logs cascade;
+drop table if exists public.services cascade;
+drop table if exists public.pricing_rules cascade;
+drop table if exists public.clients cascade;
+drop table if exists public.profiles cascade;
+drop table if exists public.companies cascade;
+drop type if exists log_type cascade;
+drop type if exists service_status cascade;
+drop type if exists rule_type cascade;
+drop type if exists user_role cascade;
+
+-- 0. Tabla de Empresas (Inquilinos/Tenants)
+create table public.companies (
+  id uuid default uuid_generate_v4() primary key,
+  name text not null, -- Ej. Grúas Poncho
+  created_at timestamp with time zone default timezone('utc'::text, now()) not null
+);
+
+alter table public.companies enable row level security;
+-- Las empresas solo pueden ser vistas por sus propios usuarios (se define debajo) o creadas por un superadmin.
+
 -- 1. Tabla Perfiles (Extendiendo auth.users)
-create type user_role as enum ('admin', 'dispatcher', 'operator');
+create type user_role as enum ('superadmin', 'admin', 'dispatcher', 'operator');
 
 create table public.profiles (
   id uuid references auth.users not null primary key,
+  company_id uuid references public.companies(id) on delete cascade, -- Puede ser null para superadmin
   role user_role default 'operator'::user_role not null,
   full_name text,
   grua_asignada text, -- ej. "Grua 01"
@@ -15,44 +38,81 @@ create table public.profiles (
 -- Asegurar que Row Level Security está activado
 alter table public.profiles enable row level security;
 
--- Políticas temporales (se pueden afinar después)
-create policy "Public profiles are viewable by everyone." on profiles for select using (true);
-create policy "Users can insert their own profile." on profiles for insert with check (auth.uid() = id);
-create policy "Users can update own profile." on profiles for update using (auth.uid() = id);
+-- Política de Empresas: Una empresa puede ser vista si el usuario pertenece a ella o es superadmin.
+create policy "Users can view their own company" on public.companies
+  for select using (
+    exists (select 1 from public.profiles where profiles.id = auth.uid() and profiles.company_id = companies.id)
+    or
+    exists (select 1 from public.profiles where profiles.id = auth.uid() and profiles.role = 'superadmin')
+  );
 
--- Trigger automatizado para crear perfil tras SignUp en Auth
-create or replace function public.handle_new_user()
-returns trigger as $$
-begin
-  insert into public.profiles (id, full_name, role)
-  values (new.id, new.raw_user_meta_data->>'full_name', cast(coalesce(new.raw_user_meta_data->>'role', 'operator') as user_role));
-  return new;
-end;
-$$ language plpgsql security definer;
+-- Políticas de Perfiles (Usuarios del tenant)
+create policy "Users can view profiles of their own company" on public.profiles
+  for select using (
+    company_id = (select company_id from public.profiles where id = auth.uid())
+    or
+    role = 'superadmin' -- Un superadmin ve todo
+    or
+    id = auth.uid() -- Se pueden ver a sí mismos
+  );
 
-create trigger on_auth_user_created
-  after insert on auth.users
-  for each row execute procedure public.handle_new_user();
+create policy "Admins can insert profiles in their company" on public.profiles
+  for insert with check (
+    -- Un superadmin puede insertar perfiles con distintos company_id
+    (select role from public.profiles where id = auth.uid()) = 'superadmin'
+    or
+    -- Un admin de empresa solo puede insertar a su propia empresa
+    ( (select role from public.profiles where id = auth.uid()) = 'admin' and company_id = (select company_id from public.profiles where id = auth.uid()) )
+  );
+
+create policy "Users can update own profile" on public.profiles
+  for update using (auth.uid() = id);
+
+create policy "Admins can update profiles in their company" on public.profiles
+  for update using (
+    (select role from public.profiles where id = auth.uid()) = 'superadmin'
+    or
+    ( (select role from public.profiles where id = auth.uid()) = 'admin' and company_id = (select company_id from public.profiles where id = auth.uid()) )
+  );
+
+-- Eliminar Trigger de validación abierto inicial, esto debe controlarse desde la API del Dashboard
+-- El registro será manejado ahora exclusivamente por la vista Admin. (Se elimina el trigger simplón de la Fase 1).
+drop trigger if exists on_auth_user_created on auth.users;
+drop function if exists public.handle_new_user();
 
 
 -- 2. Clientes (Aseguradoras / Particulares)
 create table public.clients (
   id uuid default uuid_generate_v4() primary key,
+  company_id uuid references public.companies(id) on delete cascade not null,
   name text not null, -- Ej. Seguros AXA
   created_at timestamp with time zone default timezone('utc'::text, now()) not null
 );
+
+alter table public.clients enable row level security;
+create policy "Tenancy policy for clients" on public.clients
+  for all using (
+    company_id = (select company_id from public.profiles where id = auth.uid())
+  );
 
 -- 3. Reglas de Tarifas (Pricing Rules)
 create type rule_type as enum ('local', 'foraneo');
 
 create table public.pricing_rules (
   id uuid default uuid_generate_v4() primary key,
+  company_id uuid references public.companies(id) on delete cascade not null,
   client_id uuid references public.clients(id) on delete cascade not null,
   tipo rule_type not null,
-  costo_base numeric not null default 0, -- Ej. 800 para local, o Banderazo para foráneo
-  costo_km numeric not null default 0,   -- Ej. 0 para local, 25 para foráneo
+  costo_base numeric not null default 0,
+  costo_km numeric not null default 0,
   created_at timestamp with time zone default timezone('utc'::text, now()) not null
 );
+
+alter table public.pricing_rules enable row level security;
+create policy "Tenancy policy for pricing_rules" on public.pricing_rules
+  for all using (
+    company_id = (select company_id from public.profiles where id = auth.uid())
+  );
 
 -- 4. Servicios Principales
 create type service_status as enum (
@@ -67,14 +127,15 @@ create type service_status as enum (
 
 create table public.services (
   id uuid default uuid_generate_v4() primary key,
-  folio serial not null, -- Folio autoincremental
+  folio serial not null,
+  company_id uuid references public.companies(id) on delete cascade not null,
   status service_status default 'creado'::service_status not null,
   client_id uuid references public.clients(id) not null,
   operator_id uuid references public.profiles(id),
   
   -- Coordenadas origen y destino capturadas por call center
-  origen_coords jsonb,  -- { lat: number, lng: number, address: string }
-  destino_coords jsonb, -- { lat: number, lng: number, address: string }
+  origen_coords jsonb,  
+  destino_coords jsonb, 
   
   -- Campos de costeo
   distancia_km numeric,
@@ -82,23 +143,44 @@ create table public.services (
   costo_calculado numeric,
   
   -- Cierre de servicio
-  calidad_estrellas integer, -- 1 al 5
+  calidad_estrellas integer,
   comentarios_calidad text,
-  firma_url text, -- URL en Supabase Storage
+  firma_url text, 
   
   created_at timestamp with time zone default timezone('utc'::text, now()) not null,
   updated_at timestamp with time zone default timezone('utc'::text, now()) not null
 );
+
+alter table public.services enable row level security;
+create policy "Tenancy policy for services select" on public.services
+  for select using (
+    company_id = (select company_id from public.profiles where id = auth.uid())
+  );
+create policy "Tenancy policy for services insert" on public.services
+  for insert with check (
+    company_id = (select company_id from public.profiles where id = auth.uid())
+  );
+create policy "Tenancy policy for services update" on public.services
+  for update using (
+    company_id = (select company_id from public.profiles where id = auth.uid())
+  );
 
 -- 5. Bitácora del Servicio (Logs y Eventos Inteligentes)
 create type log_type as enum ('foto', 'audio_ptt', 'gps_hitch', 'system_note', 'panic_button');
 
 create table public.service_logs (
   id uuid default uuid_generate_v4() primary key,
+  company_id uuid references public.companies(id) on delete cascade not null,
   service_id uuid references public.services(id) on delete cascade not null,
   created_by uuid references public.profiles(id),
   type log_type not null,
-  resource_url text, -- URL si es foto o audio PTT
-  note text,         -- Texto si es nota o JSON stringificado (como lat/lng)
+  resource_url text,
+  note text,
   created_at timestamp with time zone default timezone('utc'::text, now()) not null
 );
+
+alter table public.service_logs enable row level security;
+create policy "Tenancy policy for service logs" on public.service_logs
+  for all using (
+    company_id = (select company_id from public.profiles where id = auth.uid())
+  );
