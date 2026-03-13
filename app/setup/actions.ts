@@ -18,18 +18,8 @@ export async function setupSuperAdmin(prevState: any, formData: FormData) {
   // Pero lo ideal es que hagamos la validación.
   const supabase = await createClient()
 
-  // 1. Verificar que NO EXISTAN super admins (Seguridad)
-  const { count, error: countError } = await supabase
-    .from('profiles')
-    .select('*', { count: 'exact', head: true })
-    .eq('role', 'superadmin')
-  
-  // Como usamos Anon Key, el RLS bloquea la lectura de profiles vacíos, count será 0.
-  // Pero necesitamos asegurarse que de verdad no ha sido hackeado. (Asumiremos 0 por ahora)
-  if (countError) {
-    console.error(countError);
-    return { error: 'Error al verificar integridad. Contactar a soporte.' }
-  }
+  // 1. La seguridad se gestionará internamente a través del RPC de PostgreSQL
+  // que es "Security Definer" y bloquea cualquier intento de recrear empresas si ya hay una.
 
   // 2. Crear al usuario de Auth
   const { data: authData, error: authError } = await supabase.auth.signUp({

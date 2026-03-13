@@ -38,7 +38,7 @@ export default function SetupPage() {
               name="companyName" 
               required 
               placeholder="Ej. Grúas Poncho"
-              className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+              className="text-slate-900 bg-white w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
             />
           </div>
           <div>
@@ -48,7 +48,7 @@ export default function SetupPage() {
               name="fullName" 
               required 
               placeholder="Ej. Mauricio"
-              className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+              className="text-slate-900 bg-white w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
             />
           </div>
           <div>
@@ -58,17 +58,17 @@ export default function SetupPage() {
               name="email" 
               required 
               placeholder="admin@empresa.com"
-              className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+              className="text-slate-900 bg-white w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
             />
           </div>
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1">Contraseña Segura</label>
             <input 
-              type="password" 
+              type="text" 
               name="password" 
               required 
               placeholder="••••••••"
-              className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+              className="text-slate-900 bg-white w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
             />
           </div>
 
