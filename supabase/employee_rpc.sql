@@ -1,0 +1,74 @@
+-- Habilitar extensión pgcrypto para encriptar contraseñas manualmente si se requiere insertar en auth.users
+create extension if not exists "pgcrypto";
+
+-- Función RPC para que un Admin cree cuentas de empleados sin desloguearse.
+create or replace function public.create_employee_account(
+  n_email text,
+  n_password text,
+  n_full_name text,
+  n_role user_role,
+  n_company_id uuid,
+  n_grua text default null
+)
+returns void
+language plpgsql
+security definer
+as $$
+declare
+  is_admin boolean;
+  admin_company_id uuid;
+  new_auth_id uuid;
+begin
+  -- 1. Validar Ejecutor: ¿Tiene el usuario actual (auth.uid()) permisos?
+  select (role = 'superadmin' or role = 'admin'), company_id 
+  into is_admin, admin_company_id
+  from public.profiles 
+  where id = auth.uid();
+  
+  if not is_admin then
+    raise exception 'Exclusivo para administradores.';
+  end if;
+
+  -- 2. Validar Tenancy: Si no es superadmin, solo puede crear gente para su empresa.
+  if (select role from public.profiles where id = auth.uid()) != 'superadmin' then
+    if n_company_id != admin_company_id then
+      raise exception 'Un administrador no puede crear credenciales fuera de su propia empresa.';
+    end if;
+  end if;
+
+  -- 3. Crear en auth.users (Emulando el Sign Up pero desde adentro del servidor)
+  -- Esto evita usar el API cliente que cierra la sesión de quien invita.
+  new_auth_id := gen_random_uuid();
+  
+  insert into auth.users (
+    id,
+    instance_id,
+    aud,
+    role,
+    email,
+    encrypted_password,
+    email_confirmed_at,
+    created_at,
+    updated_at,
+    raw_app_meta_data,
+    raw_user_meta_data
+  ) values (
+    new_auth_id,
+    '00000000-0000-0000-0000-000000000000',
+    'authenticated',
+    'authenticated',
+    n_email,
+    crypt(n_password, gen_salt('bf')),
+    now(),
+    now(),
+    now(),
+    '{"provider":"email","providers":["email"]}'::jsonb,
+    jsonb_build_object('full_name', n_full_name)
+  );
+
+  -- 4. Crear el perfil en public.profiles automáticamente (ya quitamos el trigger)
+  insert into public.profiles (id, company_id, role, full_name, grua_asignada)
+  values (new_auth_id, n_company_id, n_role, n_full_name, n_grua);
+  
+end;
+$$;
