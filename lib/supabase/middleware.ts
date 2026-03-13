@@ -48,7 +48,7 @@ export async function updateSession(request: NextRequest) {
      const { data: profile } = await supabase.from('profiles').select('role').eq('id', user.id).single();
      
      const url = request.nextUrl.clone()
-     if (profile?.role === 'admin' || profile?.role === 'dispatcher') {
+     if (profile?.role === 'admin' || profile?.role === 'dispatcher' || profile?.role === 'superadmin') {
         url.pathname = '/dashboard'
      } else {
         url.pathname = '/operator'
