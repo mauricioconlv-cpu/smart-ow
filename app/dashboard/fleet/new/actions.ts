@@ -46,3 +46,57 @@ export async function addTowTruck(prevState: any, formData: FormData) {
   revalidatePath('/dashboard/fleet')
   redirect('/dashboard/fleet')
 }
+
+export async function updateTowTruck(id: string, formData: FormData) {
+  const supabase = await createClient()
+
+  // 1. Obtener la compañía del administrador actual
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { error: 'No autorizado' }
+
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('role')
+    .eq('id', user.id)
+    .single()
+
+  if (!profile || (profile.role !== 'admin' && profile.role !== 'superadmin')) {
+    return { error: 'No tienes permisos para modificar unidades.' }
+  }
+
+  const payload = {
+    brand: formData.get('brand') as string,
+    model: formData.get('model') as string,
+    serial_number: formData.get('serial_number') as string,
+    economic_number: formData.get('economic_number') as string,
+    plates: formData.get('plates') as string,
+    is_active: formData.get('is_active') === 'true'
+  }
+
+  const { error } = await supabase.from('tow_trucks').update(payload).eq('id', id)
+  if (error) return { error: error.message }
+  return { success: true }
+}
+
+export async function deleteTowTruck(id: string) {
+  const supabase = await createClient()
+
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { error: 'No autorizado' }
+
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('role')
+    .eq('id', user.id)
+    .single()
+
+  if (!profile || (profile.role !== 'admin' && profile.role !== 'superadmin')) {
+    return { error: 'Acción denegada por seguridad.' }
+  }
+
+  const { error } = await supabase.from('tow_trucks').delete().eq('id', id)
+  if (error) return { error: error.message }
+  
+  revalidatePath('/dashboard/fleet')
+  return { success: true }
+}

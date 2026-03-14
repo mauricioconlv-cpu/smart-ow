@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import Link from 'next/link'
 import { Plus, Shield, MapPin, Truck } from 'lucide-react'
+import UserRowActions from './components/UserRowActions'
 
 export default async function UsersPage() {
   const supabase = await createClient()
@@ -112,6 +113,17 @@ export default async function UsersPage() {
                     )}
                   </div>
                 </div>
+                
+                {/* Nuevos Botones de Control Empleado */}
+                {canInvite && (
+                   <UserRowActions 
+                      userId={profile.id} 
+                      fullName={profile.full_name || 'Sin Nombre'} 
+                      isSelf={user.id === profile.id}
+                      role={profile.role}
+                   />
+                )}
+
               </li>
             ))
           )}

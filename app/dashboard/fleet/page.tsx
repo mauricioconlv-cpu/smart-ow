@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import Link from 'next/link'
 import { Plus, Truck, CheckCircle2, XCircle } from 'lucide-react'
+import FleetRowActions from './components/FleetRowActions'
 
 export const dynamic = 'force-dynamic'
 
@@ -76,7 +77,7 @@ export default async function FleetPage() {
                     <span className="text-slate-500 italic">No asignado</span>
                   </td>
                   <td className="p-4">
-                    <button className="text-blue-600 hover:text-blue-800 font-medium text-sm">Editar</button>
+                     <FleetRowActions truckId={truck.id} economicNumber={truck.economic_number} />
                   </td>
                 </tr>
               ))}
