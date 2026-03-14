@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import Link from 'next/link'
 import { Plus } from 'lucide-react'
+import { ClientActions } from './components/ClientActions'
 
 export default async function ClientsPage() {
   const supabase = await createClient()
@@ -81,7 +82,7 @@ export default async function ClientsPage() {
                         : 'No configurada'}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                      <button className="text-blue-600 hover:text-blue-900">Editar Tarifas</button>
+                      <ClientActions clientId={client.id} clientName={client.name} />
                     </td>
                   </tr>
                 )

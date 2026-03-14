@@ -1,5 +1,6 @@
 import { login } from './actions'
 import { Truck } from 'lucide-react'
+import Link from 'next/link'
 
 export default function LoginPage() {
   return (
@@ -57,7 +58,15 @@ export default function LoginPage() {
             </button>
           </div>
         </form>
+
+        <p className="text-center text-sm text-slate-500">
+          ¿Primera vez en Smart Tow?{' '}
+          <Link href="/register" className="font-semibold text-blue-600 hover:text-blue-800">
+            Registra tu empresa →
+          </Link>
+        </p>
       </div>
     </div>
   )
 }
+
