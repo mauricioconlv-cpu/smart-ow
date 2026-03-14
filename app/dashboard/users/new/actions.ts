@@ -1,21 +1,33 @@
 'use server'
 
 import { createClient } from '@/lib/supabase/server'
+import { createClient as createServiceRoleClient } from '@supabase/supabase-js'
+import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 
-export async function inviteUserAction(formData: FormData) {
-  const supabase = await createClient()
+// Cliente con permiso total para crear usuarios sin cerrar la sesión actual
+function createAdminClient() {
+  return createServiceRoleClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    { auth: { autoRefreshToken: false, persistSession: false } }
+  )
+}
 
-  const email = formData.get('email') as string
+export async function inviteUserAction(formData: FormData) {
+  const supabase      = await createClient()
+  const supabaseAdmin = createAdminClient()
+
+  const email    = formData.get('email') as string
   const password = formData.get('password') as string
   const fullName = formData.get('fullName') as string
-  const role = formData.get('role') as string
-  const grua = formData.get('grua') as string
-  const overrideCompanyId = formData.get('companyId') as string // Solo viene del superadmin
+  const role     = formData.get('role') as string
+  const grua     = formData.get('grua') as string || null
+  const overrideCompanyId = formData.get('companyId') as string
 
-  // 1. Identificamos a quién está solicitando esto
+  // 1. Verificar permisos del usuario que hace la solicitud
   const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return
+  if (!user) throw new Error('No autenticado.')
 
   const { data: currentProfile } = await supabase
     .from('profiles')
@@ -23,50 +35,52 @@ export async function inviteUserAction(formData: FormData) {
     .eq('id', user.id)
     .single()
 
-  if (currentProfile?.role !== 'superadmin' && currentProfile?.role !== 'admin') {
-    throw new Error('Sin autorización.')
+  if (!currentProfile || !['admin', 'superadmin'].includes(currentProfile.role)) {
+    throw new Error('Sin autorización para crear usuarios.')
   }
 
-  // 2. Determinamos el Company ID final para este nuevo usuario
-  let targetCompanyId = overrideCompanyId;
+  // 2. Determinar company_id
+  let targetCompanyId = overrideCompanyId
   if (currentProfile.role === 'admin') {
-     // Un Admin siempre registrará usuarios en su propia empresa, ignoramos lo que envíe el formulario por seguridad.
-     targetCompanyId = currentProfile.company_id;
+    targetCompanyId = currentProfile.company_id
   }
+  if (!targetCompanyId) throw new Error('ID de empresa no válido.')
 
-  if (!targetCompanyId) {
-     throw new Error('Imposible crear sin un ID de empresa válido.');
-  }
-
-  // 3. Crear Autenticación usando admin auth bypass (Service Role)
-  // Como estamos en Next.js, lamentablemente el Supabase Auth standard no deja crear 
-  // otros usuarios si hay uno logueado sin hacerle bypass de Admin API.
-  // ¿Cómo creamos el auth internamente? Tenemos 2 opciones:
-  // (A) Usar una Postgres Function con RPC que contenga la logica insertando directo a auth.users (No recomendado sin extensiones pgcrypto complejas).
-  // (B) Usar el Supabase Service Role Key de este proyecto. (Opción Recomendada, pero Mauricio no nos dio la key)
-  
-  // SOLUCIÓN ALTERNATIVA (Edge Case): Llevaremos esto a un endpoint RPC que sí tiene seguridad de Postgres.
-  // Al igual que inicializar el SaaS, la creación de Empleados del SaaS usará un RPC Postgres.
-  
-  const { data: rpcData, error: rpcError } = await supabase.rpc('create_employee_account', {
-    n_email: email,
-    n_password: password,
-    n_full_name: fullName,
-    n_role: role,
-    n_company_id: targetCompanyId,
-    n_grua: grua || null
+  // 3. Crear usuario con Admin API (no cierra la sesión actual)
+  const { data: authData, error: authErr } = await supabaseAdmin.auth.admin.createUser({
+    email,
+    password,
+    email_confirm: true,   // confirma el email automáticamente
+    user_metadata: { full_name: fullName },
   })
 
-  // Validar
-  if (rpcError) {
-     console.error("Employee Creation Error:", rpcError)
-     // Si falla, es porque no la hemos inyectado a base de datos
-     if (rpcError.message.includes("could not find the function")) {
-          // Vamos a pedir a Mauricio que meta el SQL
-          throw new Error("Falta instalar el Script RPC de create_employee_account en Supabase.")
-     }
-     throw new Error(rpcError.message)
+  if (authErr || !authData.user) {
+    throw new Error(authErr?.message ?? 'Error al crear cuenta de acceso.')
   }
 
+  // 4. Crear perfil en public.profiles
+  const profilePayload: any = {
+    id:         authData.user.id,
+    company_id: targetCompanyId,
+    role:       role,
+    full_name:  fullName,
+  }
+
+  if (role === 'operator' && grua) {
+    profilePayload.grua_asignada = grua
+    profilePayload.tow_truck_id  = grua
+  }
+
+  const { error: profileErr } = await supabaseAdmin
+    .from('profiles')
+    .insert(profilePayload)
+
+  if (profileErr) {
+    // Limpiar usuario creado si el perfil falla
+    await supabaseAdmin.auth.admin.deleteUser(authData.user.id)
+    throw new Error('Error al crear perfil: ' + profileErr.message)
+  }
+
+  revalidatePath('/dashboard/users')
   redirect('/dashboard/users')
 }
