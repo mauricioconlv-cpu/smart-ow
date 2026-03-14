@@ -74,8 +74,17 @@ export default function PTTButton({ activeServiceId }: { activeServiceId?: strin
          resource_url: publicUrl,
          note: 'Mensaje de voz de Operador'
        })
+
+       // 3. Notificar en vivo al Call Center
+       const channel = supabase.channel('emergency-alerts')
+       await channel.send({
+          type: 'broadcast',
+          event: 'audio',
+          payload: { operatorId: user.id, serviceId: activeServiceId, message: 'El operador acaba de enviar una nota de voz.' }
+       })
        
      } catch(e: any) {
+
         alert("Error al enviar audio: " + e.message)
      } finally {
         setIsUploading(false)

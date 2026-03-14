@@ -1,14 +1,33 @@
 import { createClient } from '@/lib/supabase/server'
 import Link from 'next/link'
-import { MapPin, ArrowRight, CheckCircle } from 'lucide-react'
+import { MapPin, ArrowRight, Truck } from 'lucide-react'
 import DownloadPDFButton from './components/DownloadPDFButton'
+import OperatorTracker from './components/OperatorTracker'
+
+export const dynamic = 'force-dynamic'
 
 export default async function OperatorDashboard() {
   const supabase = await createClient()
   
-  // Obtener el perfil del usuario actual
+  // Obtener el perfil del usuario actual y su grúa asignada
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return null
+
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('tow_truck_id')
+    .eq('id', user.id)
+    .single()
+
+  let assignedTruck = null
+  if (profile?.tow_truck_id) {
+    const { data: truck } = await supabase
+      .from('tow_trucks')
+      .select('unit_number, brand, plates')
+      .eq('id', profile.tow_truck_id)
+      .single()
+    assignedTruck = truck
+  }
 
   // Obtener todos los servicios del operador (activos + últimos cerrados)
   const { data: services } = await supabase
@@ -45,13 +64,29 @@ export default async function OperatorDashboard() {
 
   return (
     <div className="p-4 space-y-6">
+      <OperatorTracker operatorId={user.id} />
+
+      {assignedTruck && (
+        <div className="bg-blue-600 text-white rounded-2xl shadow-md p-5 flex items-center gap-4">
+          <div className="bg-blue-500/50 p-3 rounded-full">
+             <Truck className="h-6 w-6" />
+          </div>
+          <div>
+            <h3 className="text-sm font-medium text-blue-100">Unidad Asignada</h3>
+            <p className="font-bold text-xl">{assignedTruck.unit_number} <span className="text-sm font-normal text-blue-200 ml-1">({assignedTruck.plates})</span></p>
+          </div>
+        </div>
+      )}
       
-      <div className="bg-white rounded-2xl shadow-sm p-5 border border-gray-100">
-         <h2 className="text-xl font-bold text-slate-800">Mis Servicios Activos</h2>
-         <p className="text-sm text-slate-500 mt-1">
-           Atiende los folios pendientes en orden.
-         </p>
+      <div className="bg-white rounded-2xl shadow-sm p-5 border border-gray-100 flex justify-between items-center">
+         <div>
+           <h2 className="text-xl font-bold text-slate-800">Mis Servicios Activos</h2>
+           <p className="text-sm text-slate-500 mt-1">
+             Atiende los folios pendientes en orden.
+           </p>
+         </div>
       </div>
+
 
       <div className="space-y-4">
         {(!services || services.length === 0) ? (

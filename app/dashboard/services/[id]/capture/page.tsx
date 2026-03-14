@@ -309,7 +309,7 @@ export default function ServiceCapturePage() {
       if (error) throw new Error(error.message)
 
       if (newStatus === 'asignando') {
-        router.push(`/dashboard/services/${id}`)
+        router.push(`/dashboard/services`)
       } else {
         router.push('/dashboard/services')
       }
