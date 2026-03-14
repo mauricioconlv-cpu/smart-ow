@@ -24,6 +24,8 @@ export default function NewServicePage() {
   const [selectedTruck, setSelectedTruck] = useState('')
   const [isCalculating, setIsCalculating] = useState(false)
   const [calcError, setCalcError] = useState('')
+  const [isCreating, setIsCreating] = useState(false)
+  const [createError, setCreateError] = useState('')
 
   // Cargar catalogos al montar
   useEffect(() => {
@@ -31,13 +33,70 @@ export default function NewServicePage() {
       // Clientes y Reglas
       const { data: cData } = await supabase.from('clients').select('id, name, pricing_rules(*)')
       if (cData) setClients(cData)
-      
+
       // Grúas Activas
       const { data: tData } = await supabase.from('tow_trucks').select('*').eq('is_active', true)
       if (tData) setTowTrucks(tData)
     }
     loadData()
   }, [])
+
+  // Crear y guardar el servicio en BD
+  const handleCreateService = async () => {
+    if (!selectedClient) { setCreateError('Selecciona una aseguradora/cliente.'); return }
+    if (!selectedTruck)  { setCreateError('Selecciona una grúa de la flotilla.'); return }
+
+    setIsCreating(true)
+    setCreateError('')
+
+    try {
+      // 1. Obtener company_id del usuario actual
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) throw new Error('Sesión expirada. Vuelve a iniciar sesión.')
+
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('company_id')
+        .eq('id', user.id)
+        .single()
+
+      if (!profile?.company_id) throw new Error('No se pudo obtener la empresa del usuario.')
+
+      // 2. Buscar el operador asignado a la grúa seleccionada
+      const { data: operatorProfile } = await supabase
+        .from('profiles')
+        .select('id')
+        .eq('tow_truck_id', selectedTruck)
+        .single()
+
+      // 3. Insertar el servicio
+      const truck = towTrucks.find(t => t.id === selectedTruck)
+      const { data: newService, error: serviceError } = await supabase
+        .from('services')
+        .insert({
+          company_id:       profile.company_id,
+          client_id:        selectedClient,
+          operator_id:      operatorProfile?.id ?? null,
+          tipo_servicio:    tipoServicio,
+          distancia_km:     distanciaAproximada,
+          costo_calculado:  costoCalculado,
+          origen_coords:    null,  // Se actualizará con GPS del operador
+          destino_coords:   null,
+          status:           'creado'
+        })
+        .select('id')
+        .single()
+
+      if (serviceError) throw new Error(serviceError.message)
+
+      // 4. Redirigir al listado de servicios
+      window.location.href = '/dashboard/services'
+
+    } catch (err: any) {
+      setCreateError(err.message || 'Error desconocido al crear el servicio.')
+      setIsCreating(false)
+    }
+  }
 
   // Geocodificación (Nominatim) y Ruteo (OSRM)
   const calculateRealDistance = async () => {
@@ -282,12 +341,17 @@ export default function NewServicePage() {
               </div>
             </div>
 
+            {createError && (
+              <p className="mt-4 text-red-400 text-xs font-medium">{createError}</p>
+            )}
             <button
               type="button"
-              className="mt-8 flex w-full justify-center items-center gap-2 rounded-md bg-blue-600 px-3 py-3 text-sm font-semibold text-white hover:bg-blue-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
+              onClick={handleCreateService}
+              disabled={isCreating}
+              className="mt-4 flex w-full justify-center items-center gap-2 rounded-md bg-blue-600 px-3 py-3 text-sm font-semibold text-white hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
               <Plus className="h-5 w-5" />
-              Crear y Asignar Grúa
+              {isCreating ? 'Creando Servicio...' : 'Crear y Asignar Grúa'}
             </button>
 
           </div>
