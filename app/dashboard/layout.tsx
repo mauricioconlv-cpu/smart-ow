@@ -44,6 +44,10 @@ export default async function DashboardLayout({
             <Users className="h-5 w-5 text-gray-400" />
             <span>Aseguradoras</span>
           </Link>
+          <Link href="/dashboard/fleet" className="flex items-center space-x-3 p-3 rounded-lg hover:bg-slate-800 transition-colors">
+            <Truck className="h-5 w-5 text-gray-400" />
+            <span>Flotilla de Grúas</span>
+          </Link>
           <Link href="/dashboard/users" className="flex items-center space-x-3 p-3 rounded-lg hover:bg-slate-800 transition-colors">
             <Users className="h-5 w-5 text-gray-400" />
             <span>Usuarios y Empleados</span>
