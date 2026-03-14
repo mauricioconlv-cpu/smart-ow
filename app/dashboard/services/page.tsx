@@ -1,11 +1,10 @@
 import { createClient } from '@/lib/supabase/server'
 import Link from 'next/link'
-import { Plus, Clock, MapPin } from 'lucide-react'
+import { Plus, Clock } from 'lucide-react'
 
 export default async function ServicesPage() {
   const supabase = await createClient()
   
-  // Obtenemos los servicios activos con información de cliente y operador
   const { data: services } = await supabase
     .from('services')
     .select(`
@@ -14,13 +13,13 @@ export default async function ServicesPage() {
       status,
       tipo_servicio,
       costo_calculado,
+      numero_expediente,
       created_at,
       clients ( name ),
       profiles ( full_name, grua_asignada )
     `)
     .order('created_at', { ascending: false })
 
-  // Función para traducir colores por estado
   const getStatusBadge = (status: string) => {
     const colors: Record<string, string> = {
       creado: 'bg-gray-100 text-gray-800',
@@ -73,53 +72,56 @@ export default async function ServicesPage() {
             </li>
           ) : (
             services.map((service) => (
-              <li key={service.id} className="p-6 hover:bg-gray-50 transition-colors">
-                <div className="flex items-center justify-between">
-                  {/* Folio y Cliente */}
-                  <div className="flex items-center space-x-4">
-                     <div className="flex-shrink-0">
-                        <div className="h-12 w-12 rounded-lg bg-slate-100 flex flex-col items-center justify-center border border-slate-200">
-                          <span className="text-xs text-slate-500 font-medium">FOLIO</span>
-                          <span className="text-sm text-slate-900 font-bold">#{service.folio}</span>
-                        </div>
-                     </div>
-                     <div>
-                        <h3 className="text-sm font-semibold text-gray-900">
-                          {(service.clients as any)?.name}
-                        </h3>
-                        <div className="mt-1 flex items-center gap-2 text-xs text-gray-500">
-                           <Clock className="h-3.5 w-3.5" />
-                           {new Date(service.created_at).toLocaleString('es-MX')}
-                        </div>
-                     </div>
+              // Folio entero clickeable → lleva al detalle
+              <li key={service.id}>
+                <Link 
+                  href={`/dashboard/services/${service.id}/capture`}
+                  className="block p-6 hover:bg-blue-50 transition-colors group"
+                >
+                  <div className="flex items-center justify-between">
+                    {/* Folio y Cliente */}
+                    <div className="flex items-center space-x-4">
+                       <div className="flex-shrink-0">
+                          <div className="h-12 w-12 rounded-lg bg-slate-100 group-hover:bg-blue-100 flex flex-col items-center justify-center border border-slate-200 group-hover:border-blue-300 transition-colors">
+                            <span className="text-xs text-slate-500 group-hover:text-blue-500 font-medium">FOLIO</span>
+                            <span className="text-sm text-slate-900 group-hover:text-blue-700 font-bold">#{service.folio}</span>
+                          </div>
+                       </div>
+                       <div>
+                          <h3 className="text-sm font-semibold text-gray-900 group-hover:text-blue-700 transition-colors">
+                            {(service.clients as any)?.name}
+                          </h3>
+                          {service.numero_expediente && (
+                            <p className="text-xs text-blue-600 font-medium mt-0.5">
+                              Exp/Asistencia: {service.numero_expediente}
+                            </p>
+                          )}
+                          <div className="mt-1 flex items-center gap-2 text-xs text-gray-500">
+                             <Clock className="h-3.5 w-3.5" />
+                             {new Date(service.created_at).toLocaleString('es-MX')}
+                          </div>
+                       </div>
+                    </div>
+                    
+                    {/* Status y Asignación */}
+                    <div className="flex flex-col items-end space-y-2">
+                      {getStatusBadge(service.status)}
+                      <span className="text-xs font-medium text-gray-600">
+                        Operador: {service.profiles ? `${(service.profiles as any).full_name} (${(service.profiles as any).grua_asignada})` : 'Sin Asignar'}
+                      </span>
+                    </div>
                   </div>
-                  
-                  {/* Status y Asignación */}
-                  <div className="flex flex-col items-end space-y-2">
-                    {getStatusBadge(service.status)}
-                    <span className="text-xs font-medium text-gray-600">
-                      Operador: {service.profiles ? `${(service.profiles as any).full_name} (${(service.profiles as any).grua_asignada})` : 'Sin Asignar'}
-                    </span>
-                  </div>
-                </div>
 
-                {/* Detalles de Cotizacion en Lista */}
-                <div className="mt-4 flex items-center justify-between text-sm">
-                   <div className="flex text-gray-500 gap-4">
-                     <span className="capitalize bg-gray-100 px-2 py-1 rounded">Tabulador: {service.tipo_servicio}</span>
-                   </div>
-                   <div className="font-medium text-gray-900">
-                     Cotización: <span className="text-green-600">${Number(service.costo_calculado).toLocaleString('es-MX', {minimumFractionDigits: 2})} MXN</span>
-                   </div>
-                </div>
-                
-                {service.status === 'creado' && !service.profiles && (
-                   <div className="mt-4 pt-4 border-t border-gray-100 flex justify-end">
-                      <button className="text-sm text-blue-600 hover:text-blue-800 font-medium bg-blue-50 px-3 py-1.5 rounded-md">
-                        Asignar Grúa Ahora
-                      </button>
-                   </div>
-                )}
+                  {/* Detalles de Cotización */}
+                  <div className="mt-4 flex items-center justify-between text-sm">
+                     <div className="flex text-gray-500 gap-4">
+                       <span className="capitalize bg-gray-100 px-2 py-1 rounded">Tabulador: {service.tipo_servicio}</span>
+                     </div>
+                     <div className="font-medium text-gray-900">
+                       Cotización: <span className="text-green-600">${Number(service.costo_calculado).toLocaleString('es-MX', {minimumFractionDigits: 2})} MXN</span>
+                     </div>
+                  </div>
+                </Link>
               </li>
             ))
           )}

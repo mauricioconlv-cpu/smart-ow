@@ -22,6 +22,7 @@ export async function addTowTruck(prevState: any, formData: FormData) {
   }
 
   // 2. Extraer datos del formulario
+  const tools = formData.getAll('tools') as string[]
   const data = {
     company_id: profile.company_id,
     brand: formData.get('brand') as string,
@@ -29,6 +30,8 @@ export async function addTowTruck(prevState: any, formData: FormData) {
     serial_number: formData.get('serial_number') as string,
     economic_number: formData.get('economic_number') as string,
     plates: formData.get('plates') as string,
+    unit_type: formData.get('unit_type') as string || null,
+    tools: tools.length > 0 ? tools : [],
     // Coordenadas simuladas de base/encendido
     current_lat: 19.4326,
     current_lng: -99.1332, 
@@ -64,12 +67,15 @@ export async function updateTowTruck(id: string, formData: FormData) {
     return { error: 'No tienes permisos para modificar unidades.' }
   }
 
+  const tools = formData.getAll('tools') as string[]
   const payload = {
     brand: formData.get('brand') as string,
     model: formData.get('model') as string,
     serial_number: formData.get('serial_number') as string,
     economic_number: formData.get('economic_number') as string,
     plates: formData.get('plates') as string,
+    unit_type: formData.get('unit_type') as string || null,
+    tools: tools.length > 0 ? tools : [],
     is_active: formData.get('is_active') === 'true'
   }
 
