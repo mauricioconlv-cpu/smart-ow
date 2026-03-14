@@ -72,6 +72,7 @@ begin
     user_id,
     identity_data,
     provider,
+    provider_id,
     last_sign_in_at,
     created_at,
     updated_at
@@ -80,6 +81,7 @@ begin
     new_auth_id,
     jsonb_build_object('sub', new_auth_id::text, 'email', n_email),
     'email',
+    n_email,
     now(),
     now(),
     now()
@@ -97,12 +99,13 @@ $$;
 -- REPARACIÓN DE CUENTAS EXISTENTES SIN auth.identities
 -- Ejecuta esto para arreglar a Dania y cualquier operador ya creado
 -- ============================================================
-insert into auth.identities (id, user_id, identity_data, provider, last_sign_in_at, created_at, updated_at)
+insert into auth.identities (id, user_id, identity_data, provider, provider_id, last_sign_in_at, created_at, updated_at)
 select 
   u.id,
   u.id,
   jsonb_build_object('sub', u.id::text, 'email', u.email),
   'email',
+  u.email,
   now(),
   now(),
   now()
