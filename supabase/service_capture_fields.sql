@@ -16,9 +16,16 @@ ALTER TABLE public.services
   ADD COLUMN IF NOT EXISTS assistance_type     text,   -- 'mecanica' | 'electrica'
   ADD COLUMN IF NOT EXISTS assistance_notes    text,
 
+  -- Siniestro specific
+  ADD COLUMN IF NOT EXISTS adjuster_present    boolean,
+  ADD COLUMN IF NOT EXISTS caused_damage       boolean,
+  ADD COLUMN IF NOT EXISTS authority_intervened boolean,
+  ADD COLUMN IF NOT EXISTS vehicle_damage_desc text,
+
   -- Sección: Vehículo
   ADD COLUMN IF NOT EXISTS vehicle_year        integer,
   ADD COLUMN IF NOT EXISTS vehicle_brand       text,
+  ADD COLUMN IF NOT EXISTS vehicle_type        text,
   ADD COLUMN IF NOT EXISTS vehicle_plates      text,
   ADD COLUMN IF NOT EXISTS vehicle_color       text,
 
@@ -56,3 +63,4 @@ ALTER TABLE public.services
 ALTER TYPE service_status ADD VALUE IF NOT EXISTS 'asignando';
 ALTER TYPE service_status ADD VALUE IF NOT EXISTS 'cotizacion';
 ALTER TYPE service_status ADD VALUE IF NOT EXISTS 'cancelado_cliente';
+

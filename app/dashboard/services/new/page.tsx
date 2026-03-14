@@ -26,6 +26,9 @@ export default function NewServicePage() {
   const [calcError, setCalcError] = useState('')
   const [isCreating, setIsCreating] = useState(false)
   const [createError, setCreateError] = useState('')
+  // Coordenadas geocodificadas del paso de cálculo
+  const [originLatLng, setOriginLatLng] = useState<{lat:number,lng:number}|null>(null)
+  const [destLatLng, setDestLatLng] = useState<{lat:number,lng:number}|null>(null)
 
   // Cargar catalogos al montar
   useEffect(() => {
@@ -80,8 +83,8 @@ export default function NewServicePage() {
           tipo_servicio:    tipoServicio,
           distancia_km:     distanciaAproximada,
           costo_calculado:  costoCalculado,
-          origen_coords:    null,  // Se actualizará con GPS del operador
-          destino_coords:   null,
+          origen_coords:    originLatLng ? { lat: originLatLng.lat, lng: originLatLng.lng } : null,
+          destino_coords:   destLatLng   ? { lat: destLatLng.lat,   lng: destLatLng.lng   } : null,
           status:           'creado'
         })
         .select('id')
@@ -123,6 +126,9 @@ export default function NewServicePage() {
 
        const originCoords = await geocode(originAddress)
        const destCoords = await geocode(destinationAddress)
+       // Guardar coordenadas para el formulario de captura
+       setOriginLatLng(originCoords)
+       setDestLatLng(destCoords)
 
        // 2. OSRM Routing Machine (Punto A -> B -> C)
        // Formato: Lng,Lat
