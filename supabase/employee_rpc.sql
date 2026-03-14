@@ -37,7 +37,6 @@ begin
   end if;
 
   -- 3. Crear en auth.users (Emulando el Sign Up pero desde adentro del servidor)
-  -- Esto evita usar el API cliente que cierra la sesión de quien invita.
   new_auth_id := gen_random_uuid();
   
   insert into auth.users (
@@ -66,9 +65,49 @@ begin
     jsonb_build_object('full_name', n_full_name)
   );
 
-  -- 4. Crear el perfil en public.profiles automáticamente (ya quitamos el trigger)
-  insert into public.profiles (id, company_id, role, full_name, grua_asignada)
-  values (new_auth_id, n_company_id, n_role, n_full_name, n_grua);
+  -- 4. CRÍTICO: Crear registro en auth.identities
+  -- Sin esto, signInWithPassword falla silenciosamente aunque el usuario exista en auth.users
+  insert into auth.identities (
+    id,
+    user_id,
+    identity_data,
+    provider,
+    last_sign_in_at,
+    created_at,
+    updated_at
+  ) values (
+    new_auth_id,
+    new_auth_id,
+    jsonb_build_object('sub', new_auth_id::text, 'email', n_email),
+    'email',
+    now(),
+    now(),
+    now()
+  );
+
+  -- 5. Crear el perfil en public.profiles
+  insert into public.profiles (id, company_id, role, full_name, grua_asignada, tow_truck_id)
+  values (new_auth_id, n_company_id, n_role, n_full_name, n_grua, 
+    case when n_grua is not null then n_grua::uuid else null end);
   
 end;
 $$;
+
+-- ============================================================
+-- REPARACIÓN DE CUENTAS EXISTENTES SIN auth.identities
+-- Ejecuta esto para arreglar a Dania y cualquier operador ya creado
+-- ============================================================
+insert into auth.identities (id, user_id, identity_data, provider, last_sign_in_at, created_at, updated_at)
+select 
+  u.id,
+  u.id,
+  jsonb_build_object('sub', u.id::text, 'email', u.email),
+  'email',
+  now(),
+  now(),
+  now()
+from auth.users u
+where not exists (
+  select 1 from auth.identities i where i.user_id = u.id
+)
+  and u.email is not null;

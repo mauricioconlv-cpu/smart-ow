@@ -2,7 +2,13 @@ import { login } from './actions'
 import { Truck } from 'lucide-react'
 import Link from 'next/link'
 
-export default function LoginPage() {
+export default async function LoginPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ message?: string }>
+}) {
+  const { message } = await searchParams
+
   return (
     <div className="flex min-h-screen items-center justify-center bg-gray-50 px-4 py-12 sm:px-6 lg:px-8">
       <div className="w-full max-w-md space-y-8 bg-white p-8 rounded-2xl shadow-xl">
@@ -17,7 +23,15 @@ export default function LoginPage() {
             Sistema Inteligente de Gestión de Grúas
           </p>
         </div>
+
+        {message && (
+          <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm text-center">
+            ⚠️ {decodeURIComponent(message)}
+          </div>
+        )}
+
         <form className="mt-8 space-y-6" action={login}>
+
           <div className="space-y-4 rounded-md shadow-sm">
             <div>
               <label htmlFor="email-address" className="sr-only">
