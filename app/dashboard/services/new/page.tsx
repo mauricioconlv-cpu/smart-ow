@@ -89,8 +89,8 @@ export default function NewServicePage() {
 
       if (serviceError) throw new Error(serviceError.message)
 
-      // 4. Redirigir al listado de servicios
-      window.location.href = '/dashboard/services'
+      // 4. Redirigir al formulario completo de captura
+      window.location.href = `/dashboard/services/${newService.id}/capture`
 
     } catch (err: any) {
       setCreateError(err.message || 'Error desconocido al crear el servicio.')
