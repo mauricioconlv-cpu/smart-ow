@@ -8,34 +8,54 @@ export default function NewClientPage() {
   async function createClientAction(formData: FormData) {
     'use server'
     const supabase = await createClient()
-    
+
+    // 0. Obtener la empresa del usuario actual
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return
+
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('company_id')
+      .eq('id', user.id)
+      .single()
+
+    if (!profile?.company_id) return
+
+    const companyId = profile.company_id
     const clientName = formData.get('name') as string
-    
+
     // Tarifas Locales
     const localCost = parseFloat(formData.get('localCost') as string)
-    
+
     // Tarifas Foráneas
     const foraneoBase = parseFloat(formData.get('foraneoBase') as string)
     const foraneoKm = parseFloat(formData.get('foraneoKm') as string)
 
-    // 1. Insert Client (Se quitó la desestructuración para evitar el TS Error #7031)
+    // 1. Insert Client con company_id obligatorio
     const res = await supabase
       .from('clients')
-      .insert({ name: clientName })
+      .insert({ name: clientName, company_id: companyId })
       .select('id')
       .single()
 
     const newClient = res.data as { id: string } | null
     const clientErr = res.error
 
-    if (!clientErr && newClient) {
-       // 2. Insert Pricing Rules
-       await supabase.from('pricing_rules').insert([
-         { client_id: newClient.id, tipo: 'local', costo_base: localCost, costo_km: 0 },
-         { client_id: newClient.id, tipo: 'foraneo', costo_base: foraneoBase, costo_km: foraneoKm }
-       ])
+    if (clientErr || !newClient) {
+      console.error('Error creando cliente:', clientErr?.message)
+      return
     }
-    
+
+    // 2. Insert Pricing Rules con company_id obligatorio
+    const { error: rulesErr } = await supabase.from('pricing_rules').insert([
+      { client_id: newClient.id, company_id: companyId, tipo: 'local',   costo_base: localCost,  costo_km: 0 },
+      { client_id: newClient.id, company_id: companyId, tipo: 'foraneo', costo_base: foraneoBase, costo_km: foraneoKm }
+    ])
+
+    if (rulesErr) {
+      console.error('Error creando tarifas:', rulesErr.message)
+    }
+
     redirect('/dashboard/clients')
   }
 
