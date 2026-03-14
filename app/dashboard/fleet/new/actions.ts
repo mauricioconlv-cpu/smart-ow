@@ -75,6 +75,8 @@ export async function updateTowTruck(id: string, formData: FormData) {
 
   const { error } = await supabase.from('tow_trucks').update(payload).eq('id', id)
   if (error) return { error: error.message }
+  
+  revalidatePath('/dashboard/fleet')
   return { success: true }
 }
 
@@ -94,9 +96,19 @@ export async function deleteTowTruck(id: string) {
     return { error: 'Acción denegada por seguridad.' }
   }
 
-  const { error } = await supabase.from('tow_trucks').delete().eq('id', id)
+  const { data: deleted, error } = await supabase
+    .from('tow_trucks')
+    .delete()
+    .eq('id', id)
+    .select('id')
+
   if (error) return { error: error.message }
-  
+
+  // Si no se eliminó ninguna fila, RLS bloqueó silenciosamente la operación
+  if (!deleted || deleted.length === 0) {
+    return { error: 'No se pudo eliminar la grúa. Verifica que tus permisos de BD estén correctos (RLS).' }
+  }
+
   revalidatePath('/dashboard/fleet')
   return { success: true }
 }

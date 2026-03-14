@@ -11,11 +11,20 @@ export default async function FleetPage() {
   // Leer la lista de grúas
   const { data: towTrucks } = await supabase
     .from('tow_trucks')
-    .select(`
-      *,
-      profiles(full_name) 
-    `)
+    .select('*')
     .order('economic_number', { ascending: true })
+
+  // Leer todos los operadores que tienen una grúa asignada (tow_truck_id != null)
+  const { data: operators } = await supabase
+    .from('profiles')
+    .select('tow_truck_id, full_name')
+    .not('tow_truck_id', 'is', null)
+
+  // Mapa rápido: { tow_truck_id -> full_name }
+  const operatorByTruck: Record<string, string> = {}
+  for (const op of operators ?? []) {
+    if (op.tow_truck_id) operatorByTruck[op.tow_truck_id] = op.full_name ?? 'Sin nombre'
+  }
 
   return (
     <div className="space-y-6 max-w-6xl mx-auto">
@@ -71,10 +80,10 @@ export default async function FleetPage() {
                     )}
                   </td>
                   <td className="p-4">
-                    {/* Al ser foreign_key bidireccional, deberíamos buscar en Perfiles quién la tiene.
-                        Aquí mostramos 'profiles' si la relación existiera en singular.
-                        Vamos a simplificar mostrando texto temporal o trayendo operadores */}
-                    <span className="text-slate-500 italic">No asignado</span>
+                    {operatorByTruck[truck.id]
+                      ? <span className="font-medium text-slate-700">{operatorByTruck[truck.id]}</span>
+                      : <span className="text-slate-400 italic text-sm">No asignado</span>
+                    }
                   </td>
                   <td className="p-4">
                      <FleetRowActions truckId={truck.id} economicNumber={truck.economic_number} />

@@ -2,11 +2,13 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { Edit2, Trash2, Loader2 } from 'lucide-react'
 import { deleteTowTruck } from '../new/actions'
 
 export default function FleetRowActions({ truckId, economicNumber }: { truckId: string, economicNumber: string }) {
     const [isDeleting, setIsDeleting] = useState(false)
+    const router = useRouter()
 
     const handleDelete = async () => {
         if (!window.confirm(`¿Estás completamente seguro de ELIMINAR la grúa ${economicNumber}? Esta acción es irreversible.`)) {
@@ -18,6 +20,8 @@ export default function FleetRowActions({ truckId, economicNumber }: { truckId: 
             const result = await deleteTowTruck(truckId)
             if (result?.error) {
                 alert(result.error)
+            } else {
+                router.refresh()
             }
         } catch (error) {
             alert('Error inesperado al eliminar.')

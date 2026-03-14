@@ -37,11 +37,17 @@ begin
     raise exception 'No puedes eliminar tu propia cuenta mientras estás logueado.';
   end if;
 
-  -- 5. Proceder al borrado:
-  -- Eliminar de auth.users (la tabla matriz). 
-  -- Dado que tu tabla public.profiles tiene "ON DELETE CASCADE", 
-  -- borrar auth.users borrará automáticamente su registro en perfiles.
-  delete from auth.users where id = user_id;
+  -- 5. Desreferenciar FKs que apuntan a profiles antes de borrar
+  -- services.operator_id y service_logs.created_by no son ON DELETE CASCADE,
+  -- así que los dejamos en NULL para no perder el historial de servicios.
+  UPDATE public.services SET operator_id = NULL WHERE operator_id = user_id;
+  UPDATE public.service_logs SET created_by = NULL WHERE created_by = user_id;
+
+  -- 6. Eliminar el perfil de public.profiles explícitamente primero
+  DELETE FROM public.profiles WHERE id = user_id;
+
+  -- 7. Eliminar de auth.users (el perfil ya no existe, sin riesgo de FK)
+  DELETE FROM auth.users WHERE id = user_id;
 
 end;
 $$;

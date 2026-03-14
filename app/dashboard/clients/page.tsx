@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/server'
+import Link from 'next/link'
 import { Plus } from 'lucide-react'
 
 export default async function ClientsPage() {
@@ -27,10 +28,13 @@ export default async function ClientsPage() {
             Gestiona los catálogos y las tarifas de cobro para cada cliente.
           </p>
         </div>
-        <button className="flex items-center space-x-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium transition-colors">
+        <Link 
+          href="/dashboard/clients/new"
+          className="flex items-center space-x-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium transition-colors"
+        >
           <Plus className="h-5 w-5" />
           <span>Nuevo Cliente</span>
-        </button>
+        </Link>
       </div>
 
       <div className="bg-white shadow rounded-lg overflow-hidden">
