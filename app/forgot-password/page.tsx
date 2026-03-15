@@ -5,8 +5,9 @@ import { createClient } from '@/lib/supabase/client'
 import { Truck, Mail, Phone, ArrowLeft, CheckCircle2, AlertTriangle, Loader2, KeyRound, ShieldAlert } from 'lucide-react'
 import Link from 'next/link'
 
+export const dynamic = 'force-dynamic'
+
 export default function ForgotPasswordPage() {
-  const supabase = createClient()
   const [mode, setMode] = useState<'choose' | 'superadmin' | 'employee'>('choose')
   const [email, setEmail] = useState('')
   const [isSending, setIsSending] = useState(false)
@@ -17,6 +18,7 @@ export default function ForgotPasswordPage() {
     e.preventDefault()
     setIsSending(true)
     setError('')
+    const supabase = createClient()
 
     const { error } = await supabase.auth.resetPasswordForEmail(email, {
       redirectTo: `${window.location.origin}/reset-password`,

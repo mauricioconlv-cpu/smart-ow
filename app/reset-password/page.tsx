@@ -6,6 +6,8 @@ import { useRouter } from 'next/navigation'
 import { Truck, Eye, EyeOff, KeyRound, CheckCircle2, AlertTriangle, Loader2 } from 'lucide-react'
 import Link from 'next/link'
 
+export const dynamic = 'force-dynamic'
+
 export default function ResetPasswordPage() {
   const supabase = createClient()
   const router = useRouter()
