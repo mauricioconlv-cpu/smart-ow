@@ -17,7 +17,7 @@ export async function updateClientWithRates(formData: FormData): Promise<void> {
   // 1. Actualizar nombre del cliente
   await supabase.from('clients').update({ name: clientName }).eq('id', clientId)
 
-  // 2. Construir los costos (columnas nuevas)
+  // 2. Construir los costos
   const costs: Record<string, number> = {}
   for (const t of ['a', 'b', 'c', 'd']) {
     costs[`costo_local_tipo_${t}`] = parseFloat(formData.get(`costo_local_tipo_${t}`) as string) || 0
@@ -34,38 +34,12 @@ export async function updateClientWithRates(formData: FormData): Promise<void> {
     costs[field] = parseFloat(formData.get(field) as string) || 0
   }
 
-  // 3. Obtener company_id
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('company_id')
-    .eq('id', user.id)
-    .single()
-
-  if (!profile?.company_id) return
-
-  // 4. Eliminar TODAS las reglas viejas (cualquier tipo)
-  await supabase.from('pricing_rules').delete().eq('client_id', clientId)
-
-  // 5. Insertar fila base con SOLO las columnas originales que PostgREST siempre ha conocido
-  //    (sin las columnas nuevas para evitar el problema de schema cache en INSERT)
-  const { error: insertErr } = await supabase.from('pricing_rules').insert({
-    client_id:  clientId,
-    company_id: profile.company_id,
-    tipo:       'general',
-    costo_base: 0,
-    costo_km:   0,
-  })
-
-  if (insertErr) {
-    console.error('Error INSERT pricing_rule:', insertErr.message)
-    revalidatePath('/dashboard/clients')
-    redirect('/dashboard/clients')
-    return
-  }
-
-  // 6. UPDATE con las columnas nuevas — esto SÍ funciona porque PostgREST
-  //    conoce las nuevas columnas después del NOTIFY de fix_missing_columns.sql
-  await supabase.from('pricing_rules').update(costs).eq('client_id', clientId)
+  // 3. SOLO UPDATE — el trigger SQL garantiza que pricing_rules SIEMPRE existe
+  //    No se necesita INSERT ni DELETE desde el código
+  await supabase
+    .from('pricing_rules')
+    .update({ tipo: 'general', ...costs })
+    .eq('client_id', clientId)
 
   revalidatePath('/dashboard/clients')
   redirect('/dashboard/clients')
