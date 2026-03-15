@@ -47,10 +47,22 @@ export async function deleteClient(clientId: string) {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: 'No autorizado' }
 
-  // 1. Eliminar reglas de precio primero
+  // 1. Verificar si tiene servicios asociados antes de intentar borrar
+  const { count } = await supabase
+    .from('services')
+    .select('id', { count: 'exact', head: true })
+    .eq('client_id', clientId)
+
+  if (count && count > 0) {
+    return {
+      error: `No se puede eliminar: este cliente tiene ${count} servicio${count === 1 ? '' : 's'} registrado${count === 1 ? '' : 's'} en el historial. Primero elimina o reasigna esos servicios.`
+    }
+  }
+
+  // 2. Eliminar reglas de precio
   await supabase.from('pricing_rules').delete().eq('client_id', clientId)
 
-  // 2. Eliminar cliente
+  // 3. Eliminar cliente
   const { error } = await supabase.from('clients').delete().eq('id', clientId)
   if (error) return { error: error.message }
 
