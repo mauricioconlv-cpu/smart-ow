@@ -5,11 +5,7 @@ import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
 import { Truck, Eye, EyeOff, KeyRound, CheckCircle2, AlertTriangle, Loader2 } from 'lucide-react'
 import Link from 'next/link'
-
-export const dynamic = 'force-dynamic'
-
 export default function ResetPasswordPage() {
-  const supabase = createClient()
   const router = useRouter()
 
   const [password, setPassword] = useState('')
@@ -21,6 +17,7 @@ export default function ResetPasswordPage() {
   const [hasSession, setHasSession] = useState(false)
 
   useEffect(() => {
+    const supabase = createClient()
     // Supabase handles the hash from the email link automatically
     supabase.auth.getSession().then(({ data }) => {
       if (data.session) setHasSession(true)
@@ -36,6 +33,7 @@ export default function ResetPasswordPage() {
     setIsSaving(true)
     setError('')
 
+    const supabase = createClient()
     const { error } = await supabase.auth.updateUser({ password })
 
     setIsSaving(false)
