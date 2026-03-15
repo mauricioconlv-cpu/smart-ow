@@ -3,7 +3,6 @@ import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { Save, ArrowLeft } from 'lucide-react'
 
-// Helper for a styled currency input
 function CurrencyInput({ name, label, placeholder = '0.00' }: { name: string; label: string; placeholder?: string }) {
   return (
     <div>
@@ -41,18 +40,16 @@ export default function NewClientPage() {
     const companyId = profile.company_id
     const clientName = formData.get('name') as string
 
-    // Tarifas base
-    const localCost    = parseFloat(formData.get('localCost') as string) || 0
-    const foraneoBase  = parseFloat(formData.get('foraneoBase') as string) || 0
-    const foraneoKm    = parseFloat(formData.get('foraneoKm') as string) || 0
+    // Costos por tipo de grúa (local, banderazo, km)
+    const tipoFields = ['a', 'b', 'c', 'd']
+    const tipoCosts: Record<string, number> = {}
+    for (const t of tipoFields) {
+      tipoCosts[`costo_local_tipo_${t}`] = parseFloat(formData.get(`costo_local_tipo_${t}`) as string) || 0
+      tipoCosts[`costo_bande_tipo_${t}`] = parseFloat(formData.get(`costo_bande_tipo_${t}`) as string) || 0
+      tipoCosts[`costo_km_tipo_${t}`]    = parseFloat(formData.get(`costo_km_tipo_${t}`) as string) || 0
+    }
 
-    // Costos por tipo de grúa
-    const costoTipoA = parseFloat(formData.get('costo_tipo_a') as string) || 0
-    const costoTipoB = parseFloat(formData.get('costo_tipo_b') as string) || 0
-    const costoTipoC = parseFloat(formData.get('costo_tipo_c') as string) || 0
-    const costoTipoD = parseFloat(formData.get('costo_tipo_d') as string) || 0
-
-    // Costos adicionales
+    // Costos adicionales genéricos
     const extras: Record<string, number> = {}
     const extraFields = [
       'costo_maniobra', 'costo_hora_espera', 'costo_abanderamiento', 'costo_resguardo',
@@ -79,21 +76,16 @@ export default function NewClientPage() {
       return
     }
 
-    // 2. Insert pricing rules (local + foraneo) with all cost fields
-    const baseRule = {
+    // 2. UNA sola regla de pricing con todos los costos por tipo
+    const { error: rulesErr } = await supabase.from('pricing_rules').insert({
       client_id: newClient.id,
       company_id: companyId,
-      costo_tipo_a: costoTipoA,
-      costo_tipo_b: costoTipoB,
-      costo_tipo_c: costoTipoC,
-      costo_tipo_d: costoTipoD,
+      tipo: 'general',
+      costo_base: 0,
+      costo_km: 0,
+      ...tipoCosts,
       ...extras
-    }
-
-    const { error: rulesErr } = await supabase.from('pricing_rules').insert([
-      { ...baseRule, tipo: 'local',   costo_base: localCost,  costo_km: 0 },
-      { ...baseRule, tipo: 'foraneo', costo_base: foraneoBase, costo_km: foraneoKm }
-    ])
+    })
 
     if (rulesErr) console.error('Error creando tarifas:', rulesErr.message)
 
@@ -113,7 +105,7 @@ export default function NewClientPage() {
       </div>
 
       <form action={createClientAction} className="space-y-8">
-        {/* Información General */}
+        {/* Nombre */}
         <div className="bg-white shadow rounded-lg p-6">
           <h3 className="text-lg font-semibold text-gray-900 mb-4">Información General</h3>
           <div>
@@ -124,56 +116,47 @@ export default function NewClientPage() {
           </div>
         </div>
 
-        {/* Tarifas Base */}
-        <div className="bg-white shadow rounded-lg p-6">
-          <h3 className="text-lg font-semibold text-gray-900 mb-1">Tarifas Base de Arrastre</h3>
-          <p className="text-xs text-slate-500 mb-4">Costo base local (fijo) y foráneo (banderazo + km).</p>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <div>
-              <label htmlFor="localCost" className="block text-xs font-semibold text-slate-600 mb-1">Costo Local (MXN fijo)</label>
-              <div className="relative rounded-md shadow-sm">
-                <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
-                  <span className="text-slate-400 text-sm">$</span>
-                </div>
-                <input type="number" name="localCost" id="localCost" step="0.01" required
-                  className="block w-full rounded-md border-0 py-2.5 pl-7 pr-3 text-gray-900 ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-blue-600 text-sm bg-white shadow-sm"
-                  placeholder="800.00"/>
-              </div>
-            </div>
-            <div>
-              <label htmlFor="foraneoBase" className="block text-xs font-semibold text-slate-600 mb-1">Banderazo Foráneo (MXN)</label>
-              <div className="relative rounded-md shadow-sm">
-                <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
-                  <span className="text-slate-400 text-sm">$</span>
-                </div>
-                <input type="number" name="foraneoBase" id="foraneoBase" step="0.01" required
-                  className="block w-full rounded-md border-0 py-2.5 pl-7 pr-3 text-gray-900 ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-blue-600 text-sm bg-white shadow-sm"
-                  placeholder="500.00"/>
-              </div>
-            </div>
-            <div>
-              <label htmlFor="foraneoKm" className="block text-xs font-semibold text-slate-600 mb-1">Costo por Km (MXN)</label>
-              <div className="relative rounded-md shadow-sm">
-                <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
-                  <span className="text-slate-400 text-sm">$</span>
-                </div>
-                <input type="number" name="foraneoKm" id="foraneoKm" step="0.01" required
-                  className="block w-full rounded-md border-0 py-2.5 pl-7 pr-3 text-gray-900 ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-blue-600 text-sm bg-white shadow-sm"
-                  placeholder="25.00"/>
-              </div>
-            </div>
-          </div>
-        </div>
-
         {/* Costos por Tipo de Grúa */}
         <div className="bg-white shadow rounded-lg p-6">
           <h3 className="text-lg font-semibold text-gray-900 mb-1">Costo por Tipo de Grúa</h3>
-          <p className="text-xs text-slate-500 mb-4">Costo adicional según la categoría de la unidad asignada.</p>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <CurrencyInput name="costo_tipo_a" label="Tipo A (< 3.5 ton)" placeholder="0.00"/>
-            <CurrencyInput name="costo_tipo_b" label="Tipo B (3.5–7.5 ton)" placeholder="0.00"/>
-            <CurrencyInput name="costo_tipo_c" label="Tipo C (7.5–11 ton)" placeholder="0.00"/>
-            <CurrencyInput name="costo_tipo_d" label="Tipo D (> 11 ton)" placeholder="0.00"/>
+          <p className="text-xs text-slate-500 mb-5">Cada tipo de unidad tiene su propio costo local fijo, banderazo foráneo y costo por kilómetro.</p>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b-2 border-slate-200">
+                  <th className="text-left pb-3 pr-6 text-xs font-bold text-slate-500 uppercase w-28">Tipo Grúa</th>
+                  <th className="text-left pb-3 pr-4 text-xs font-bold text-slate-500 uppercase">Costo Local (fijo)</th>
+                  <th className="text-left pb-3 pr-4 text-xs font-bold text-slate-500 uppercase">Banderazo Foráneo</th>
+                  <th className="text-left pb-3 text-xs font-bold text-slate-500 uppercase">Costo / Km</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {[
+                  { key: 'a', label: 'Tipo A', desc: '< 3.5 ton', color: 'text-green-700 bg-green-100' },
+                  { key: 'b', label: 'Tipo B', desc: '3.5 – 7.5 ton', color: 'text-blue-700 bg-blue-100' },
+                  { key: 'c', label: 'Tipo C', desc: '7.5 – 11 ton', color: 'text-orange-700 bg-orange-100' },
+                  { key: 'd', label: 'Tipo D', desc: '> 11 ton', color: 'text-red-700 bg-red-100' },
+                ].map(({ key, label, desc, color }) => (
+                  <tr key={key}>
+                    <td className="py-4 pr-6">
+                      <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg font-black text-sm ${color}`}>
+                        {key.toUpperCase()}
+                      </span>
+                      <span className="block text-xs text-slate-400 mt-1 pl-1">{desc}</span>
+                    </td>
+                    <td className="py-4 pr-4">
+                      <CurrencyInput name={`costo_local_tipo_${key}`} label="" placeholder="0.00" />
+                    </td>
+                    <td className="py-4 pr-4">
+                      <CurrencyInput name={`costo_bande_tipo_${key}`} label="" placeholder="0.00" />
+                    </td>
+                    <td className="py-4">
+                      <CurrencyInput name={`costo_km_tipo_${key}`} label="" placeholder="0.00" />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         </div>
 
@@ -200,7 +183,7 @@ export default function NewClientPage() {
           </div>
         </div>
 
-        {/* Especialidades */}
+        {/* Especializados */}
         <div className="bg-white shadow rounded-lg p-6">
           <h3 className="text-lg font-semibold text-gray-900 mb-1">Servicios Especializados y Carga</h3>
           <p className="text-xs text-slate-500 mb-4">Rescate, adaptaciones, blindaje y carga por kilogramo.</p>
@@ -209,8 +192,6 @@ export default function NewClientPage() {
             <CurrencyInput name="costo_adaptacion" label="Adaptación (desfleches, bateas, etc.)"/>
             <CurrencyInput name="costo_kg_carga" label="Kilogramo de Carga"/>
           </div>
-
-          {/* Blindajes */}
           <div className="mt-4 border-t pt-4">
             <h4 className="text-sm font-semibold text-slate-700 mb-3">Niveles de Blindaje</h4>
             <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">

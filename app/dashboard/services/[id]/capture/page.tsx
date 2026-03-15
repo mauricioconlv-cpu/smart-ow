@@ -5,7 +5,7 @@ import { useParams, useRouter } from 'next/navigation'
 import { createBrowserClient } from '@supabase/ssr'
 import {
   User, Phone, FileText, Car, Wrench, MapPin, Package,
-  Loader2, ArrowLeft, Save, X, Upload, XCircle
+  Loader2, ArrowLeft, Save, X, Upload, XCircle, Lock, Unlock
 } from 'lucide-react'
 
 const supabase = createBrowserClient(
@@ -67,18 +67,22 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 }
 
 const inputCls  = "w-full bg-white border border-slate-300 rounded-lg px-3 py-2.5 text-sm text-slate-800 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition placeholder:text-slate-400"
-const selectCls = inputCls
+const inputROCls = "w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2.5 text-sm text-slate-700 cursor-not-allowed"
+const selectCls  = inputCls
+const selectROCls = inputROCls
 
-function YesNo({ label, value, onChange }: { label: string; value: boolean | null; onChange: (v: boolean) => void }) {
+function YesNo({ label, value, onChange, readOnly }: { label: string; value: boolean | null; onChange: (v: boolean) => void; readOnly: boolean }) {
   return (
     <Field label={label}>
       <div className="flex gap-2 mt-1">
         {([true, false] as const).map(opt => (
-          <button key={String(opt)} type="button" onClick={() => onChange(opt)}
+          <button key={String(opt)} type="button"
+            onClick={() => !readOnly && onChange(opt)}
+            disabled={readOnly}
             className={`flex-1 py-2.5 rounded-lg text-sm font-bold border-2 transition ${
               value === opt
                 ? opt ? 'bg-green-500 text-white border-green-500' : 'bg-red-500 text-white border-red-500'
-                : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+                : readOnly ? 'bg-slate-50 text-slate-400 border-slate-200 cursor-not-allowed' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
             }`}>
             {opt ? '✓ Sí' : '✗ No'}
           </button>
@@ -88,8 +92,8 @@ function YesNo({ label, value, onChange }: { label: string; value: boolean | nul
   )
 }
 
-function PhotoUploader({ label, photos, onAdd, onRemove }: {
-  label: string; photos: string[]; onAdd: (files: File[]) => void; onRemove: (i: number) => void
+function PhotoUploader({ label, photos, onAdd, onRemove, readOnly }: {
+  label: string; photos: string[]; onAdd: (files: File[]) => void; onRemove: (i: number) => void; readOnly: boolean
 }) {
   const ref = useRef<HTMLInputElement>(null)
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -99,26 +103,43 @@ function PhotoUploader({ label, photos, onAdd, onRemove }: {
   return (
     <div>
       <label className="block text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-2">{label}</label>
-      <input ref={ref} type="file" accept="image/*" multiple className="hidden" onChange={handleChange} />
-      <button type="button" onClick={() => ref.current?.click()}
-        className="flex items-center gap-2 px-4 py-2 bg-slate-100 hover:bg-slate-200 border border-slate-300 rounded-lg text-sm font-medium text-slate-700 transition">
-        <Upload className="w-4 h-4" /> Subir Fotos
-      </button>
+      {!readOnly && (
+        <>
+          <input ref={ref} type="file" accept="image/*" multiple className="hidden" onChange={handleChange} />
+          <button type="button" onClick={() => ref.current?.click()}
+            className="flex items-center gap-2 px-4 py-2 bg-slate-100 hover:bg-slate-200 border border-slate-300 rounded-lg text-sm font-medium text-slate-700 transition">
+            <Upload className="w-4 h-4" /> Subir Fotos
+          </button>
+        </>
+      )}
       {photos.length > 0 && (
         <div className="flex flex-wrap gap-2 mt-3">
           {photos.map((url, i) => (
             <div key={i} className="relative w-24 h-24 rounded-lg overflow-hidden border border-slate-200 group">
               <img src={url} alt="" className="w-full h-full object-cover" />
-              <button onClick={() => onRemove(i)}
-                className="absolute top-1 right-1 bg-red-500 text-white rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition">
-                <X className="w-3 h-3" />
-              </button>
+              {!readOnly && (
+                <button onClick={() => onRemove(i)}
+                  className="absolute top-1 right-1 bg-red-500 text-white rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition">
+                  <X className="w-3 h-3" />
+                </button>
+              )}
             </div>
           ))}
         </div>
       )}
     </div>
   )
+}
+
+// ─── Reading mode display ─────────────────────────────────────
+function ReadValue({ value }: { value: any }) {
+  if (value === null || value === undefined || value === '') {
+    return <span className="text-slate-400 italic text-sm">Sin registrar</span>
+  }
+  if (typeof value === 'boolean') {
+    return <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-bold ${value ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-600'}`}>{value ? 'Sí' : 'No'}</span>
+  }
+  return <span className="text-sm text-slate-800">{String(value)}</span>
 }
 
 // ─── Main ─────────────────────────────────────────────────────
@@ -129,6 +150,8 @@ export default function ServiceCapturePage() {
   const [isSaving, setIsSaving]   = useState(false)
   const [saveErr, setSaveErr]     = useState('')
   const [isGeoLoading, setIsGeoLoading] = useState(false)
+  const [isEditing, setIsEditing] = useState(false)
+  const [hasData, setHasData] = useState(false)
 
   // Photos state
   const [contactPhotos,  setContactPhotos]  = useState<File[]>([])
@@ -159,7 +182,6 @@ export default function ServiceCapturePage() {
   const [serviceReason,   setServiceReason]   = useState<'siniestro'|'asistencia'|''>('')
   const [assistanceType,  setAssistanceType]  = useState<'mecanica'|'electrica'|''>('')
   const [assistanceNotes, setAssistanceNotes] = useState('')
-  // Siniestro specific
   const [adjusterPresent,     setAdjusterPresent]     = useState<boolean|null>(null)
   const [causedDamage,        setCausedDamage]         = useState<boolean|null>(null)
   const [authorityIntervened, setAuthorityIntervened]  = useState<boolean|null>(null)
@@ -193,7 +215,6 @@ export default function ServiceCapturePage() {
   const [destinationType,     setDestinationType]     = useState<'agencia'|'taller'|'domicilio'|''>('')
   const [travelsInventory,    setTravelsInventory]    = useState<boolean|null>(null)
   const [destinationReceiver, setDestinationReceiver] = useState('')
-
   const [destState,         setDestState]         = useState('')
   const [destMunicipality,  setDestMunicipality]  = useState('')
   const [destColonia,       setDestColonia]        = useState('')
@@ -212,29 +233,85 @@ export default function ServiceCapturePage() {
       if (!data) return
       setService(data)
 
-      // Auto-geocode origen
-      const oc = data.origen_coords
-      if (oc?.lat && oc?.lng) {
-        setIsGeoLoading(true)
-        const geo = await reverseGeocode(oc.lat, oc.lng)
-        if (geo) {
-          setOriginState(matchEstado(geo.state))
-          setOriginMunicipality(geo.municipality)
-          setOriginColonia(geo.colonia)
-          setOriginStreet(geo.street)
-        }
-        setIsGeoLoading(false)
+      // ── Poblar estados con datos guardados ──
+      if (data.contact_name || data.service_reason || data.vehicle_brand) {
+        setHasData(true)
+        setIsEditing(false) // modo lectura si ya tiene datos
+      } else {
+        setIsEditing(true) // modo edición si es nuevo
       }
 
-      // Auto-geocode destino
-      const dc = data.destino_coords
-      if (dc?.lat && dc?.lng) {
-        const geo = await reverseGeocode(dc.lat, dc.lng)
-        if (geo) {
-          setDestState(matchEstado(geo.state))
-          setDestMunicipality(geo.municipality)
-          setDestColonia(geo.colonia)
-          setDestStreet(geo.street)
+      setContactName(data.contact_name || '')
+      setContactPhone(data.contact_phone || '')
+      setInsuranceContact(data.insurance_contact || '')
+      setInsuranceFolio(data.insurance_folio || '')
+
+      setServiceReason(data.service_reason || '')
+      setAssistanceType(data.assistance_type || '')
+      setAssistanceNotes(data.assistance_notes || '')
+      setAdjusterPresent(data.adjuster_present ?? null)
+      setCausedDamage(data.caused_damage ?? null)
+      setAuthorityIntervened(data.authority_intervened ?? null)
+      setVehicleDamageDesc(data.vehicle_damage_desc || '')
+
+      setVehicleYear(data.vehicle_year ? String(data.vehicle_year) : '')
+      setVehicleBrand(data.vehicle_brand || '')
+      setVehicleType(data.vehicle_type || '')
+      setVehiclePlates(data.vehicle_plates || '')
+      setVehicleColor(data.vehicle_color || '')
+
+      setNeutral(data.maneuver_neutral ?? null)
+      setTransmissionType(data.transmission_type || '')
+      setWheelsSpin(data.wheels_spin ?? null)
+      setSteeringSpin(data.steering_spins ?? null)
+      setVehicleAt(data.vehicle_at || '')
+      setParkingType(data.parking_type || '')
+      setParkingNotes(data.parking_notes || '')
+
+      setOriginState(data.origin_state || '')
+      setOriginMunicipality(data.origin_municipality || '')
+      setOriginColonia(data.origin_colonia || '')
+      setOriginStreet(data.origin_street || '')
+      setOriginCrossStreets(data.origin_cross_streets || '')
+      setOriginReferences(data.origin_references || '')
+
+      setDestinationType(data.destination_type || '')
+      setTravelsInventory(data.travels_inventory ?? null)
+      setDestinationReceiver(data.destination_receiver || '')
+      setDestState(data.dest_state || '')
+      setDestMunicipality(data.dest_municipality || '')
+      setDestColonia(data.dest_colonia || '')
+      setDestStreet(data.dest_street || '')
+      setDestCrossStreets(data.dest_cross_streets || '')
+      setDestReferences(data.dest_references || '')
+
+      // Auto-geocode origen solo si no hay datos guardados
+      if (!data.origin_state) {
+        const oc = data.origen_coords
+        if (oc?.lat && oc?.lng) {
+          setIsGeoLoading(true)
+          const geo = await reverseGeocode(oc.lat, oc.lng)
+          if (geo) {
+            setOriginState(matchEstado(geo.state))
+            setOriginMunicipality(geo.municipality)
+            setOriginColonia(geo.colonia)
+            setOriginStreet(geo.street)
+          }
+          setIsGeoLoading(false)
+        }
+      }
+
+      // Auto-geocode destino solo si no hay datos guardados
+      if (!data.dest_state) {
+        const dc = data.destino_coords
+        if (dc?.lat && dc?.lng) {
+          const geo = await reverseGeocode(dc.lat, dc.lng)
+          if (geo) {
+            setDestState(matchEstado(geo.state))
+            setDestMunicipality(geo.municipality)
+            setDestColonia(geo.colonia)
+            setDestStreet(geo.street)
+          }
         }
       }
     }
@@ -308,11 +385,9 @@ export default function ServiceCapturePage() {
 
       if (error) throw new Error(error.message)
 
-      if (newStatus === 'asignando') {
-        router.push(`/dashboard/services`)
-      } else {
-        router.push('/dashboard/services')
-      }
+      setIsEditing(false)
+      setHasData(true)
+      setIsSaving(false)
     } catch (err: any) {
       setSaveErr(err.message)
       setIsSaving(false)
@@ -325,6 +400,8 @@ export default function ServiceCapturePage() {
     </div>
   )
 
+  const ro = !isEditing // read-only shorthand
+
   return (
     <div className="max-w-4xl mx-auto pb-28 space-y-5">
 
@@ -333,30 +410,68 @@ export default function ServiceCapturePage() {
         <button onClick={() => router.back()} className="p-2 hover:bg-slate-100 rounded-full transition-colors">
           <ArrowLeft className="w-5 h-5 text-slate-600" />
         </button>
-        <div>
+        <div className="flex-1">
           <h1 className="text-2xl font-bold text-slate-800">Captura de Servicio</h1>
           <p className="text-sm text-slate-500 mt-0.5">
             Folio Interno: <span className="font-bold text-blue-600">#{service.folio}</span>
             {' · '} Cliente: <span className="font-semibold">{service.clients?.name}</span>
           </p>
         </div>
+        {/* Indicador de modo */}
+        {hasData && (
+          <span className={`flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-full ${
+            ro ? 'bg-slate-100 text-slate-600' : 'bg-amber-100 text-amber-700'
+          }`}>
+            {ro ? <Lock className="w-3.5 h-3.5"/> : <Unlock className="w-3.5 h-3.5"/>}
+            {ro ? 'Solo Lectura' : 'Editando'}
+          </span>
+        )}
       </div>
+
+      {/* Banner de solo lectura */}
+      {ro && hasData && (
+        <div className="flex items-center gap-3 bg-slate-50 border border-slate-200 rounded-xl p-4">
+          <Lock className="w-5 h-5 text-slate-500 shrink-0" />
+          <p className="text-sm text-slate-600 flex-1">
+            Este servicio ya tiene información guardada. Estás en modo de <strong>solo lectura</strong>.
+          </p>
+          <button
+            onClick={() => setIsEditing(true)}
+            className="flex items-center gap-1.5 px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white font-semibold text-sm rounded-lg transition-colors shrink-0"
+          >
+            <Unlock className="w-4 h-4" />
+            Desbloquear Edición
+          </button>
+        </div>
+      )}
 
       {/* ── 1. Contacto ──────────────────────────────────── */}
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
         <SectionHeader icon={User} title="Información de Contacto" />
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <Field label="Nombre del Usuario / Asegurado">
-            <input className={inputCls} value={contactName} onChange={e => setContactName(e.target.value)} placeholder="Ej. Juan García" />
+            {ro
+              ? <ReadValue value={contactName} />
+              : <input className={inputCls} value={contactName} onChange={e => setContactName(e.target.value)} placeholder="Ej. Juan García" />
+            }
           </Field>
           <Field label="Teléfono de Contacto">
-            <input className={inputCls} type="tel" value={contactPhone} onChange={e => setContactPhone(e.target.value)} placeholder="55 1234 5678" />
+            {ro
+              ? <ReadValue value={contactPhone} />
+              : <input className={inputCls} type="tel" value={contactPhone} onChange={e => setContactPhone(e.target.value)} placeholder="55 1234 5678" />
+            }
           </Field>
           <Field label="Ejecutivo / Agente de la Aseguradora">
-            <input className={inputCls} value={insuranceContact} onChange={e => setInsuranceContact(e.target.value)} placeholder="Ej. María López (AXA)" />
+            {ro
+              ? <ReadValue value={insuranceContact} />
+              : <input className={inputCls} value={insuranceContact} onChange={e => setInsuranceContact(e.target.value)} placeholder="Ej. María López (AXA)" />
+            }
           </Field>
           <Field label="Folio / Expediente Aseguradora">
-            <input className={inputCls} value={insuranceFolio} onChange={e => setInsuranceFolio(e.target.value)} placeholder="Ej. EXP-2024-789456" />
+            {ro
+              ? <ReadValue value={insuranceFolio} />
+              : <input className={inputCls} value={insuranceFolio} onChange={e => setInsuranceFolio(e.target.value)} placeholder="Ej. EXP-2024-789456" />
+            }
           </Field>
         </div>
       </div>
@@ -366,35 +481,43 @@ export default function ServiceCapturePage() {
         <SectionHeader icon={FileText} title="Motivo del Servicio" color="text-orange-600" />
 
         <Field label="Tipo de Solicitud">
-          <div className="flex gap-3 mt-1">
-            {([['siniestro','🚨 Siniestro'],['asistencia','🔧 Asistencia']] as const).map(([v, l]) => (
-              <button key={v} type="button" onClick={() => setServiceReason(v)}
-                className={`flex-1 py-3 rounded-xl text-sm font-bold border-2 capitalize transition ${
-                  serviceReason === v ? 'bg-orange-500 text-white border-orange-500' : 'bg-white text-slate-600 border-slate-200 hover:border-orange-300'
-                }`}>{l}</button>
-            ))}
-          </div>
+          {ro ? (
+            <ReadValue value={serviceReason === 'siniestro' ? '🚨 Siniestro' : serviceReason === 'asistencia' ? '🔧 Asistencia' : null} />
+          ) : (
+            <div className="flex gap-3 mt-1">
+              {([['siniestro','🚨 Siniestro'],['asistencia','🔧 Asistencia']] as const).map(([v, l]) => (
+                <button key={v} type="button" onClick={() => setServiceReason(v)}
+                  className={`flex-1 py-3 rounded-xl text-sm font-bold border-2 capitalize transition ${
+                    serviceReason === v ? 'bg-orange-500 text-white border-orange-500' : 'bg-white text-slate-600 border-slate-200 hover:border-orange-300'
+                  }`}>{l}</button>
+              ))}
+            </div>
+          )}
         </Field>
 
         {/* SINIESTRO FLOW */}
         {serviceReason === 'siniestro' && (
           <div className="mt-5 space-y-4 pl-4 border-l-4 border-orange-300">
-            <YesNo label="¿Ya se encuentra el Ajustador en sitio?" value={adjusterPresent} onChange={setAdjusterPresent} />
-            <YesNo label="¿Causó daños al asfalto, banquetas o monumentos?" value={causedDamage} onChange={setCausedDamage} />
+            <YesNo label="¿Ya se encuentra el Ajustador en sitio?" value={adjusterPresent} onChange={setAdjusterPresent} readOnly={ro} />
+            <YesNo label="¿Causó daños al asfalto, banquetas o monumentos?" value={causedDamage} onChange={setCausedDamage} readOnly={ro} />
             {causedDamage === true && (
               <div className="pl-4 border-l-4 border-red-200 space-y-4">
-                <YesNo label="¿Intervino la Autoridad?" value={authorityIntervened} onChange={setAuthorityIntervened} />
+                <YesNo label="¿Intervino la Autoridad?" value={authorityIntervened} onChange={setAuthorityIntervened} readOnly={ro} />
               </div>
             )}
             <Field label="Descripción de Daños del Vehículo">
-              <textarea className={inputCls} rows={3} value={vehicleDamageDesc} onChange={e => setVehicleDamageDesc(e.target.value)}
-                placeholder="Describe los daños visibles, zona afectada, estado general del vehículo..." />
+              {ro
+                ? <ReadValue value={vehicleDamageDesc} />
+                : <textarea className={inputCls} rows={3} value={vehicleDamageDesc} onChange={e => setVehicleDamageDesc(e.target.value)}
+                    placeholder="Describe los daños visibles..." />
+              }
             </Field>
             <PhotoUploader
               label="Fotos de Daños del Vehículo (Evidencia)"
               photos={damageUrls}
               onAdd={addPhotos(setDamagePhotos, setDamageUrls)}
               onRemove={removePhoto(setDamagePhotos, setDamageUrls)}
+              readOnly={ro}
             />
           </div>
         )}
@@ -403,19 +526,26 @@ export default function ServiceCapturePage() {
         {serviceReason === 'asistencia' && (
           <div className="mt-5 space-y-4 pl-4 border-l-4 border-amber-300">
             <Field label="Tipo de Falla">
-              <div className="flex gap-3 mt-1">
-                {([['mecanica','⚙️ Falla Mecánica'],['electrica','⚡ Falla Eléctrica']] as const).map(([v,l]) => (
-                  <button key={v} type="button" onClick={() => setAssistanceType(v)}
-                    className={`flex-1 py-2.5 rounded-lg text-sm font-semibold border-2 transition ${
-                      assistanceType === v ? 'bg-amber-500 text-white border-amber-500' : 'bg-white text-slate-600 border-slate-200 hover:border-amber-300'
-                    }`}>{l}</button>
-                ))}
-              </div>
+              {ro ? (
+                <ReadValue value={assistanceType === 'mecanica' ? '⚙️ Falla Mecánica' : assistanceType === 'electrica' ? '⚡ Falla Eléctrica' : null} />
+              ) : (
+                <div className="flex gap-3 mt-1">
+                  {([['mecanica','⚙️ Falla Mecánica'],['electrica','⚡ Falla Eléctrica']] as const).map(([v,l]) => (
+                    <button key={v} type="button" onClick={() => setAssistanceType(v)}
+                      className={`flex-1 py-2.5 rounded-lg text-sm font-semibold border-2 transition ${
+                        assistanceType === v ? 'bg-amber-500 text-white border-amber-500' : 'bg-white text-slate-600 border-slate-200 hover:border-amber-300'
+                      }`}>{l}</button>
+                  ))}
+                </div>
+              )}
             </Field>
-            {assistanceType && (
+            {(assistanceType || ro) && (
               <Field label="Descripción de la Falla">
-                <textarea className={inputCls} rows={3} value={assistanceNotes} onChange={e => setAssistanceNotes(e.target.value)}
-                  placeholder="Detalla la falla específica, síntomas o información relevante..." />
+                {ro
+                  ? <ReadValue value={assistanceNotes} />
+                  : <textarea className={inputCls} rows={3} value={assistanceNotes} onChange={e => setAssistanceNotes(e.target.value)}
+                      placeholder="Detalla la falla específica..." />
+                }
               </Field>
             )}
           </div>
@@ -427,29 +557,38 @@ export default function ServiceCapturePage() {
         <SectionHeader icon={Car} title="Datos del Vehículo" color="text-indigo-600" />
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
           <Field label="Año">
-            <select className={selectCls} value={vehicleYear} onChange={e => setVehicleYear(e.target.value)}>
-              <option value="">Año</option>
-              {YEARS.map(y => <option key={y} value={y}>{y}</option>)}
-            </select>
+            {ro ? <ReadValue value={vehicleYear} />
+              : <select className={selectCls} value={vehicleYear} onChange={e => setVehicleYear(e.target.value)}>
+                  <option value="">Año</option>
+                  {YEARS.map(y => <option key={y} value={y}>{y}</option>)}
+                </select>
+            }
           </Field>
           <Field label="Marca">
-            <select className={selectCls} value={vehicleBrand} onChange={e => setVehicleBrand(e.target.value)}>
-              <option value="">Marca</option>
-              {BRANDS.map(b => <option key={b} value={b}>{b}</option>)}
-            </select>
+            {ro ? <ReadValue value={vehicleBrand} />
+              : <select className={selectCls} value={vehicleBrand} onChange={e => setVehicleBrand(e.target.value)}>
+                  <option value="">Marca</option>
+                  {BRANDS.map(b => <option key={b} value={b}>{b}</option>)}
+                </select>
+            }
           </Field>
           <Field label="Tipo de Vehículo">
-            <input className={inputCls} value={vehicleType} onChange={e => setVehicleType(e.target.value)}
-              placeholder="Ej. Sedán, SUV, Pickup..." />
+            {ro ? <ReadValue value={vehicleType} />
+              : <input className={inputCls} value={vehicleType} onChange={e => setVehicleType(e.target.value)} placeholder="Ej. Sedán, SUV..." />
+            }
           </Field>
           <Field label="Placas">
-            <input className={`${inputCls} uppercase`} value={vehiclePlates} onChange={e => setVehiclePlates(e.target.value.toUpperCase())} placeholder="ABC-1234" />
+            {ro ? <ReadValue value={vehiclePlates} />
+              : <input className={`${inputCls} uppercase`} value={vehiclePlates} onChange={e => setVehiclePlates(e.target.value.toUpperCase())} placeholder="ABC-1234" />
+            }
           </Field>
           <Field label="Color">
-            <select className={selectCls} value={vehicleColor} onChange={e => setVehicleColor(e.target.value)}>
-              <option value="">Color</option>
-              {COLORS.map(c => <option key={c} value={c}>{c}</option>)}
-            </select>
+            {ro ? <ReadValue value={vehicleColor} />
+              : <select className={selectCls} value={vehicleColor} onChange={e => setVehicleColor(e.target.value)}>
+                  <option value="">Color</option>
+                  {COLORS.map(c => <option key={c} value={c}>{c}</option>)}
+                </select>
+            }
           </Field>
         </div>
       </div>
@@ -458,63 +597,72 @@ export default function ServiceCapturePage() {
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
         <SectionHeader icon={Wrench} title="Maniobras y Condiciones" color="text-red-600" />
         <div className="space-y-5">
-          <YesNo label="¿Vehículo en Neutral?" value={neutral} onChange={setNeutral} />
+          <YesNo label="¿Vehículo en Neutral?" value={neutral} onChange={setNeutral} readOnly={ro} />
           {neutral === false && (
             <div className="pl-4 border-l-4 border-red-200">
               <Field label="Tipo de Transmisión">
-                <div className="flex gap-2 mt-1">
-                  {([['estandar','Estándar'],['automatico','Automático']] as const).map(([v,l]) => (
-                    <button key={v} type="button" onClick={() => setTransmissionType(v)}
-                      className={`flex-1 py-2.5 rounded-lg text-sm font-semibold border-2 transition ${transmissionType === v ? 'bg-slate-700 text-white border-slate-700' : 'bg-white text-slate-600 border-slate-200'}`}>
-                      {l}
-                    </button>
-                  ))}
-                </div>
+                {ro ? <ReadValue value={transmissionType} />
+                  : <div className="flex gap-2 mt-1">
+                      {([['estandar','Estándar'],['automatico','Automático']] as const).map(([v,l]) => (
+                        <button key={v} type="button" onClick={() => setTransmissionType(v)}
+                          className={`flex-1 py-2.5 rounded-lg text-sm font-semibold border-2 transition ${transmissionType === v ? 'bg-slate-700 text-white border-slate-700' : 'bg-white text-slate-600 border-slate-200'}`}>
+                          {l}
+                        </button>
+                      ))}
+                    </div>
+                }
               </Field>
             </div>
           )}
 
-          <YesNo label="¿Las Llantas Giran?" value={wheelsSpin} onChange={setWheelsSpin} />
+          <YesNo label="¿Las Llantas Giran?" value={wheelsSpin} onChange={setWheelsSpin} readOnly={ro} />
           {wheelsSpin === false && (
             <div className="pl-4 border-l-4 border-red-200">
-              <YesNo label="¿El Volante Gira?" value={steeringSpin} onChange={setSteeringSpin} />
+              <YesNo label="¿El Volante Gira?" value={steeringSpin} onChange={setSteeringSpin} readOnly={ro} />
             </div>
           )}
 
           <Field label="¿Dónde se Encuentra el Vehículo?">
-            <div className="flex gap-3 mt-1">
-              {([['calle','🛣️ Pie de Calle'],['garage','🏢 Garage / Estacionamiento']] as const).map(([v,l]) => (
-                <button key={v} type="button" onClick={() => setVehicleAt(v)}
-                  className={`flex-1 py-2.5 rounded-xl text-sm font-bold border-2 transition ${vehicleAt === v ? 'bg-slate-800 text-white border-slate-800' : 'bg-white text-slate-600 border-slate-200 hover:border-slate-400'}`}>
-                  {l}
-                </button>
-              ))}
-            </div>
-          </Field>
-          {vehicleAt === 'garage' && (
-            <div className="pl-4 border-l-4 border-slate-300 space-y-4">
-              <Field label="Tipo de Estacionamiento">
-                <div className="flex gap-2 mt-1">
-                  {([['techado','☁️ Techado'],['aire_libre','🌤️ Al Aire Libre']] as const).map(([v,l]) => (
-                    <button key={v} type="button" onClick={() => setParkingType(v)}
-                      className={`flex-1 py-2 rounded-lg text-sm font-semibold border-2 transition ${parkingType === v ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-slate-600 border-slate-200'}`}>
+            {ro ? <ReadValue value={vehicleAt === 'calle' ? '🛣️ Pie de Calle' : vehicleAt === 'garage' ? '🏢 Garage / Estacionamiento' : null} />
+              : <div className="flex gap-3 mt-1">
+                  {([['calle','🛣️ Pie de Calle'],['garage','🏢 Garage / Estacionamiento']] as const).map(([v,l]) => (
+                    <button key={v} type="button" onClick={() => setVehicleAt(v)}
+                      className={`flex-1 py-2.5 rounded-xl text-sm font-bold border-2 transition ${vehicleAt === v ? 'bg-slate-800 text-white border-slate-800' : 'bg-white text-slate-600 border-slate-200 hover:border-slate-400'}`}>
                       {l}
                     </button>
                   ))}
                 </div>
+            }
+          </Field>
+          {vehicleAt === 'garage' && (
+            <div className="pl-4 border-l-4 border-slate-300 space-y-4">
+              <Field label="Tipo de Estacionamiento">
+                {ro ? <ReadValue value={parkingType} />
+                  : <div className="flex gap-2 mt-1">
+                      {([['techado','☁️ Techado'],['aire_libre','🌤️ Al Aire Libre']] as const).map(([v,l]) => (
+                        <button key={v} type="button" onClick={() => setParkingType(v)}
+                          className={`flex-1 py-2 rounded-lg text-sm font-semibold border-2 transition ${parkingType === v ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-slate-600 border-slate-200'}`}>
+                          {l}
+                        </button>
+                      ))}
+                    </div>
+                }
               </Field>
-              <Field label="Condiciones: acceso, altura máxima, rampa, caracol, etc.">
-                <textarea className={inputCls} rows={3} value={parkingNotes} onChange={e => setParkingNotes(e.target.value)}
-                  placeholder="Ej: Acceso en rampa de caracol, altura máxima 2.10m, nivel -2, estacionamiento subterráneo..." />
+              <Field label="Condiciones de acceso">
+                {ro ? <ReadValue value={parkingNotes} />
+                  : <textarea className={inputCls} rows={3} value={parkingNotes} onChange={e => setParkingNotes(e.target.value)}
+                      placeholder="Ej: Acceso en rampa de caracol, altura máxima 2.10m..." />
+                }
               </Field>
             </div>
           )}
 
           <PhotoUploader
-            label="Fotos de Evidencia — Estado del Vehículo al Momento"
+            label="Fotos de Evidencia — Estado del Vehículo"
             photos={contactUrls}
             onAdd={addPhotos(setContactPhotos, setContactUrls)}
             onRemove={removePhoto(setContactPhotos, setContactUrls)}
+            readOnly={ro}
           />
         </div>
       </div>
@@ -524,30 +672,42 @@ export default function ServiceCapturePage() {
         <SectionHeader icon={MapPin} title="Ubicación de Origen (Siniestro)" color="text-emerald-600" />
         {isGeoLoading && (
           <div className="flex items-center gap-2 text-sm text-slate-500 mb-4">
-            <Loader2 className="w-4 h-4 animate-spin" /> Geocodificando coordenadas automáticamente...
+            <Loader2 className="w-4 h-4 animate-spin" /> Geocodificando coordenadas...
           </div>
         )}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <Field label="Estado">
-            <select className={selectCls} value={originState} onChange={e => setOriginState(e.target.value)}>
-              <option value="">Seleccionar estado</option>
-              {ESTADOS.map(s => <option key={s} value={s}>{s}</option>)}
-            </select>
+            {ro ? <ReadValue value={originState} />
+              : <select className={selectCls} value={originState} onChange={e => setOriginState(e.target.value)}>
+                  <option value="">Seleccionar estado</option>
+                  {ESTADOS.map(s => <option key={s} value={s}>{s}</option>)}
+                </select>
+            }
           </Field>
           <Field label="Municipio / Alcaldía">
-            <input className={inputCls} value={originMunicipality} onChange={e => setOriginMunicipality(e.target.value)} placeholder="Auto-completado con coordenadas" />
+            {ro ? <ReadValue value={originMunicipality} />
+              : <input className={inputCls} value={originMunicipality} onChange={e => setOriginMunicipality(e.target.value)} placeholder="Auto-completado con coordenadas" />
+            }
           </Field>
           <Field label="Colonia">
-            <input className={inputCls} value={originColonia} onChange={e => setOriginColonia(e.target.value)} placeholder="Auto-completado con coordenadas" />
+            {ro ? <ReadValue value={originColonia} />
+              : <input className={inputCls} value={originColonia} onChange={e => setOriginColonia(e.target.value)} placeholder="Auto-completado con coordenadas" />
+            }
           </Field>
           <Field label="Calle / Avenida">
-            <input className={inputCls} value={originStreet} onChange={e => setOriginStreet(e.target.value)} placeholder="Auto-completado con coordenadas" />
+            {ro ? <ReadValue value={originStreet} />
+              : <input className={inputCls} value={originStreet} onChange={e => setOriginStreet(e.target.value)} placeholder="Auto-completado con coordenadas" />
+            }
           </Field>
           <Field label="Entre Calles">
-            <input className={inputCls} value={originCrossStreets} onChange={e => setOriginCrossStreets(e.target.value)} placeholder="Ej. Entre Insurgentes y Reforma" />
+            {ro ? <ReadValue value={originCrossStreets} />
+              : <input className={inputCls} value={originCrossStreets} onChange={e => setOriginCrossStreets(e.target.value)} placeholder="Ej. Entre Insurgentes y Reforma" />
+            }
           </Field>
           <Field label="Referencias Visuales">
-            <input className={inputCls} value={originReferences} onChange={e => setOriginReferences(e.target.value)} placeholder="Ej. Frente al OXXO, edificio azul" />
+            {ro ? <ReadValue value={originReferences} />
+              : <input className={inputCls} value={originReferences} onChange={e => setOriginReferences(e.target.value)} placeholder="Ej. Frente al OXXO" />
+            }
           </Field>
         </div>
       </div>
@@ -557,20 +717,24 @@ export default function ServiceCapturePage() {
         <SectionHeader icon={Package} title="Destino del Vehículo" color="text-purple-600" />
         <div className="space-y-4">
           <Field label="¿A dónde se Traslada el Vehículo?">
-            <div className="flex gap-3 mt-1">
-              {([['agencia','🏪 Agencia'],['taller','🔩 Taller'],['domicilio','🏠 Domicilio']] as const).map(([v,l]) => (
-                <button key={v} type="button" onClick={() => setDestinationType(v)}
-                  className={`flex-1 py-2.5 rounded-xl text-sm font-bold border-2 transition ${destinationType === v ? 'bg-purple-600 text-white border-purple-600' : 'bg-white text-slate-600 border-slate-200 hover:border-purple-300'}`}>
-                  {l}
-                </button>
-              ))}
-            </div>
+            {ro ? <ReadValue value={destinationType === 'agencia' ? '🏪 Agencia' : destinationType === 'taller' ? '🔩 Taller' : destinationType === 'domicilio' ? '🏠 Domicilio' : null} />
+              : <div className="flex gap-3 mt-1">
+                  {([['agencia','🏪 Agencia'],['taller','🔩 Taller'],['domicilio','🏠 Domicilio']] as const).map(([v,l]) => (
+                    <button key={v} type="button" onClick={() => setDestinationType(v)}
+                      className={`flex-1 py-2.5 rounded-xl text-sm font-bold border-2 transition ${destinationType === v ? 'bg-purple-600 text-white border-purple-600' : 'bg-white text-slate-600 border-slate-200 hover:border-purple-300'}`}>
+                      {l}
+                    </button>
+                  ))}
+                </div>
+            }
           </Field>
-          <YesNo label="¿El Vehículo Viaja Bajo Inventario?" value={travelsInventory} onChange={setTravelsInventory} />
+          <YesNo label="¿El Vehículo Viaja Bajo Inventario?" value={travelsInventory} onChange={setTravelsInventory} readOnly={ro} />
           {travelsInventory === true && (
             <div className="pl-4 border-l-4 border-purple-200">
               <Field label="¿Quién Recibe en el Destino?">
-                <input className={inputCls} value={destinationReceiver} onChange={e => setDestinationReceiver(e.target.value)} placeholder="Nombre y cargo de quien recibe" />
+                {ro ? <ReadValue value={destinationReceiver} />
+                  : <input className={inputCls} value={destinationReceiver} onChange={e => setDestinationReceiver(e.target.value)} placeholder="Nombre y cargo de quien recibe" />
+                }
               </Field>
             </div>
           )}
@@ -582,25 +746,37 @@ export default function ServiceCapturePage() {
         <SectionHeader icon={MapPin} title="Ubicación de Destino" color="text-rose-600" />
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <Field label="Estado">
-            <select className={selectCls} value={destState} onChange={e => setDestState(e.target.value)}>
-              <option value="">Seleccionar estado</option>
-              {ESTADOS.map(s => <option key={s} value={s}>{s}</option>)}
-            </select>
+            {ro ? <ReadValue value={destState} />
+              : <select className={selectCls} value={destState} onChange={e => setDestState(e.target.value)}>
+                  <option value="">Seleccionar estado</option>
+                  {ESTADOS.map(s => <option key={s} value={s}>{s}</option>)}
+                </select>
+            }
           </Field>
           <Field label="Municipio / Alcaldía">
-            <input className={inputCls} value={destMunicipality} onChange={e => setDestMunicipality(e.target.value)} placeholder="Auto-completado con coordenadas" />
+            {ro ? <ReadValue value={destMunicipality} />
+              : <input className={inputCls} value={destMunicipality} onChange={e => setDestMunicipality(e.target.value)} placeholder="Auto-completado con coordenadas" />
+            }
           </Field>
           <Field label="Colonia">
-            <input className={inputCls} value={destColonia} onChange={e => setDestColonia(e.target.value)} placeholder="Auto-completado con coordenadas" />
+            {ro ? <ReadValue value={destColonia} />
+              : <input className={inputCls} value={destColonia} onChange={e => setDestColonia(e.target.value)} placeholder="Auto-completado con coordenadas" />
+            }
           </Field>
           <Field label="Calle / Avenida">
-            <input className={inputCls} value={destStreet} onChange={e => setDestStreet(e.target.value)} placeholder="Auto-completado con coordenadas" />
+            {ro ? <ReadValue value={destStreet} />
+              : <input className={inputCls} value={destStreet} onChange={e => setDestStreet(e.target.value)} placeholder="Auto-completado con coordenadas" />
+            }
           </Field>
           <Field label="Entre Calles">
-            <input className={inputCls} value={destCrossStreets} onChange={e => setDestCrossStreets(e.target.value)} placeholder="Ej. Entre Insurgentes y Reforma" />
+            {ro ? <ReadValue value={destCrossStreets} />
+              : <input className={inputCls} value={destCrossStreets} onChange={e => setDestCrossStreets(e.target.value)} placeholder="Ej. Entre Insurgentes y Reforma" />
+            }
           </Field>
           <Field label="Referencias Visuales">
-            <input className={inputCls} value={destReferences} onChange={e => setDestReferences(e.target.value)} placeholder="Ej. Agencia con logotipo rojo, costado norte" />
+            {ro ? <ReadValue value={destReferences} />
+              : <input className={inputCls} value={destReferences} onChange={e => setDestReferences(e.target.value)} placeholder="Ej. Agencia con logotipo rojo" />
+            }
           </Field>
         </div>
       </div>
@@ -617,20 +793,43 @@ export default function ServiceCapturePage() {
       {/* ── Barra fija de acciones ──────────────────────────── */}
       <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 shadow-2xl px-6 py-4 z-40">
         <div className="max-w-4xl mx-auto flex flex-col sm:flex-row items-center gap-3">
-          <button onClick={() => handleSave('cancelado_cliente')} disabled={isSaving}
-            className="w-full sm:w-auto px-5 py-2.5 border-2 border-red-300 text-red-600 font-semibold text-sm rounded-xl hover:bg-red-50 transition disabled:opacity-40 flex items-center justify-center gap-2">
-            <XCircle className="w-4 h-4" /> Cancelado al Momento
-          </button>
-          <button onClick={() => handleSave('cotizacion')} disabled={isSaving}
-            className="w-full sm:w-auto px-5 py-2.5 border-2 border-amber-400 text-amber-700 font-semibold text-sm rounded-xl hover:bg-amber-50 transition disabled:opacity-40 flex items-center justify-center gap-2">
-            <FileText className="w-4 h-4" /> Solo Cotización
-          </button>
-          <div className="flex-1" />
-          <button onClick={() => handleSave('asignando')} disabled={isSaving}
-            className="w-full sm:w-auto px-8 py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold text-sm rounded-xl shadow-md transition disabled:opacity-40 flex items-center justify-center gap-2">
-            {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-            {isSaving ? 'Guardando...' : 'Guardar Datos → Asignar Grúa'}
-          </button>
+          {ro ? (
+            // Modo lectura: solo botón desbloquear
+            <>
+              <button onClick={() => router.back()} className="w-full sm:w-auto px-5 py-2.5 border border-slate-300 text-slate-600 font-semibold text-sm rounded-xl hover:bg-slate-50 transition flex items-center justify-center gap-2">
+                <ArrowLeft className="w-4 h-4" /> Volver
+              </button>
+              <div className="flex-1" />
+              <button onClick={() => setIsEditing(true)}
+                className="w-full sm:w-auto px-8 py-3 bg-amber-500 hover:bg-amber-600 text-white font-bold text-sm rounded-xl shadow-md transition flex items-center justify-center gap-2">
+                <Unlock className="w-4 h-4" />
+                Desbloquear y Editar
+              </button>
+            </>
+          ) : (
+            // Modo edición: botones de guardado
+            <>
+              {hasData && (
+                <button onClick={() => setIsEditing(false)} className="w-full sm:w-auto px-5 py-2.5 border border-slate-300 text-slate-600 font-semibold text-sm rounded-xl hover:bg-slate-50 transition flex items-center justify-center gap-2">
+                  <Lock className="w-4 h-4" /> Cancelar
+                </button>
+              )}
+              <button onClick={() => handleSave('cancelado_cliente')} disabled={isSaving}
+                className="w-full sm:w-auto px-5 py-2.5 border-2 border-red-300 text-red-600 font-semibold text-sm rounded-xl hover:bg-red-50 transition disabled:opacity-40 flex items-center justify-center gap-2">
+                <XCircle className="w-4 h-4" /> Cancelado al Momento
+              </button>
+              <button onClick={() => handleSave('cotizacion')} disabled={isSaving}
+                className="w-full sm:w-auto px-5 py-2.5 border-2 border-amber-400 text-amber-700 font-semibold text-sm rounded-xl hover:bg-amber-50 transition disabled:opacity-40 flex items-center justify-center gap-2">
+                <FileText className="w-4 h-4" /> Solo Cotización
+              </button>
+              <div className="flex-1" />
+              <button onClick={() => handleSave('asignando')} disabled={isSaving}
+                className="w-full sm:w-auto px-8 py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold text-sm rounded-xl shadow-md transition disabled:opacity-40 flex items-center justify-center gap-2">
+                {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                {isSaving ? 'Guardando...' : 'Guardar Datos → Asignar Grúa'}
+              </button>
+            </>
+          )}
         </div>
       </div>
 
