@@ -14,25 +14,28 @@ export default function LiveMonitorPage() {
   const [operators, setOperators] = useState<any[]>([])
   const [trucks, setTrucks] = useState<any[]>([])
   const [dispatchers, setDispatchers] = useState<any[]>([])
+  const [dbError, setDbError] = useState<string | null>(null)
 
   const supabase = createClient()
 
   useEffect(() => {
     const fetchPersonnel = async () => {
       // Operadores
-      const { data: ops } = await supabase
+      const { data: ops, error: opsError } = await supabase
         .from('profiles')
         .select('id, full_name, grua_asignada, updated_at')
         .eq('role', 'operator')
+      if (opsError) setDbError(`Error ops: ${opsError.message}`)
       if (ops) setOperators(ops)
 
       // Grúas con ubicación reciente (activas en calle = tienen coords dentro de las últimas 2h)
       const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString()
-      const { data: tw } = await supabase
+      const { data: tw, error: twError } = await supabase
         .from('tow_trucks')
         .select('id, economic_number, current_location, last_location_update, profiles(full_name)')
         .gt('last_location_update', twoHoursAgo)
         .not('current_location', 'is', null)
+      if (twError) setDbError(prev => prev ? `${prev} | Error trucks: ${twError.message}` : `Error trucks: ${twError.message}`)
       if (tw) setTrucks(tw)
 
       // Despachadores
@@ -79,6 +82,11 @@ export default function LiveMonitorPage() {
       </section>
 
       {/* ── Panel de Personal Conectado ── */}
+      {dbError && (
+        <div className="bg-red-100 text-red-700 p-2 rounded text-xs font-mono">
+          {dbError}
+        </div>
+      )}
       <section className="basis-1/2 min-h-0 grid grid-cols-1 md:grid-cols-3 gap-4 overflow-hidden">
 
         {/* Operadores */}
