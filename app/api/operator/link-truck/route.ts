@@ -31,21 +31,30 @@ export async function POST(req: NextRequest) {
     const plates = (body.plates || '').trim().toUpperCase()
     if (!plates) return NextResponse.json({ error: 'Placas requeridas.' }, { status: 400 })
 
-    // Buscar grúa por placas — sin filtro company_id (puede que la columna no exista aún)
+    // Normalizamos las placas ingresadas quitando todos los espacios
+    const normalizedInput = plates.replace(/\s+/g, '')
+
+    // Buscar grúa por placas — obtenemos todas para filtrar en JS inmune a espacios
     // Usamos service role para saltarnos RLS
     const adminClient = createAdminClient()
-    const { data: trucks } = await adminClient
+    const { data: allTrucks } = await adminClient
       .from('tow_trucks')
       .select('id, unit_number, brand, model, plates, is_active')
-      .ilike('plates', plates)
 
-    if (!trucks || trucks.length === 0) {
+    if (!allTrucks) {
+      return NextResponse.json({ error: 'Error al consultar la flotilla.' }, { status: 500 })
+    }
+
+    const truck = allTrucks.find(t => {
+      const dbPlate = (t.plates || '').toUpperCase().replace(/\s+/g, '')
+      return dbPlate === normalizedInput
+    })
+
+    if (!truck) {
       return NextResponse.json({
         error: `No se encontró ninguna grúa con placas "${plates}" en la flotilla. Verifica e intenta de nuevo.`
       }, { status: 404 })
     }
-
-    const truck = trucks[0]
 
     if (!truck.is_active) {
       return NextResponse.json({
