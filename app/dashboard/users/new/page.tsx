@@ -59,7 +59,7 @@ export default async function NewUserPage() {
                 name="fullName" 
                 required 
                 placeholder="Ej. Juan Pérez"
-                className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
               />
             </div>
             
@@ -70,7 +70,7 @@ export default async function NewUserPage() {
                 name="email" 
                 required 
                 placeholder="juan@empresa.com"
-                className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
               />
             </div>
 
@@ -81,7 +81,7 @@ export default async function NewUserPage() {
                 name="password" 
                 required 
                 placeholder="Genere una clave..."
-                className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
               />
             </div>
 
@@ -90,7 +90,7 @@ export default async function NewUserPage() {
               <select 
                 name="role" 
                 required
-                className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white"
+                className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white text-gray-900"
               >
                 {/* Un Admin normal no puede crear superadmins ni otros admins (usualmente), pero demosle flexibilidad de rol 'admin' de sucursal. */}
                 {isSuperAdmin && <option value="admin">Administrador (Dueño de Empresa)</option>}
@@ -107,7 +107,7 @@ export default async function NewUserPage() {
                   <select 
                     name="companyId" 
                     required={isSuperAdmin}
-                    className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white"
+                    className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white text-gray-900"
                   >
                     <option value="">Seleccione un inquilino...</option>
                     {companies.map(c => (
@@ -123,7 +123,7 @@ export default async function NewUserPage() {
                   type="text" 
                   name="grua" 
                   placeholder="Ej. Unidad 04"
-                  className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
                 />
              </div>
           </div>
