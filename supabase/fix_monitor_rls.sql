@@ -1,32 +1,44 @@
 -- =====================================================================
--- FIX: Aislamiento Multi-Tenant correcto para perfiles y grúas
---      + Panel analítico para el superadmin CEO
---
--- REGLAS:
---   superadmin → SOLO ve su propio perfil (no datos de clientes)
---   admin/dispatcher → solo ve perfiles de SU empresa
---   operator → solo se ve a sí mismo
---
--- Para el superadmin, los datos de empresas se exponen via función
--- SECURITY DEFINER get_platform_analytics() → métricas agregadas
+-- RESET DEFINITIVO DE RLS — Multi-Tenant Isolation
+-- Este script elimina TODAS las políticas existentes en profiles y
+-- tow_trucks (sin importar su nombre) y recrea solo las correctas.
 --
 -- Ejecutar en Supabase SQL Editor
 -- =====================================================================
 
--- ─── Funciones auxiliares (SECURITY DEFINER para evitar deadlock) ────
+-- ─── PASO 1: Borrar ABSOLUTAMENTE TODAS las políticas existentes ─────
+-- Usamos un bloque dinámico para no depender de nombres específicos
+DO $$
+DECLARE
+  r RECORD;
+BEGIN
+  -- Eliminar todas las políticas de profiles
+  FOR r IN SELECT policyname FROM pg_policies WHERE tablename = 'profiles' AND schemaname = 'public' LOOP
+    EXECUTE format('DROP POLICY IF EXISTS %I ON public.profiles', r.policyname);
+    RAISE NOTICE 'Dropped profiles policy: %', r.policyname;
+  END LOOP;
+
+  -- Eliminar todas las políticas de tow_trucks
+  FOR r IN SELECT policyname FROM pg_policies WHERE tablename = 'tow_trucks' AND schemaname = 'public' LOOP
+    EXECUTE format('DROP POLICY IF EXISTS %I ON public.tow_trucks', r.policyname);
+    RAISE NOTICE 'Dropped tow_trucks policy: %', r.policyname;
+  END LOOP;
+END$$;
+
+-- ─── PASO 2: Verificar que RLS está habilitado en ambas tablas ────────
+ALTER TABLE public.profiles   ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.tow_trucks ENABLE ROW LEVEL SECURITY;
+
+-- ─── PASO 3: Funciones auxiliares (SECURITY DEFINER) ─────────────────
 CREATE OR REPLACE FUNCTION public.get_my_role()
-RETURNS text
-LANGUAGE sql STABLE SECURITY DEFINER
-AS $$ SELECT role FROM public.profiles WHERE id = auth.uid() LIMIT 1; $$;
+RETURNS text LANGUAGE sql STABLE SECURITY DEFINER AS
+$$ SELECT role FROM public.profiles WHERE id = auth.uid() LIMIT 1; $$;
 
 CREATE OR REPLACE FUNCTION public.get_my_company_id()
-RETURNS uuid
-LANGUAGE sql STABLE SECURITY DEFINER
-AS $$ SELECT company_id FROM public.profiles WHERE id = auth.uid() LIMIT 1; $$;
+RETURNS uuid LANGUAGE sql STABLE SECURITY DEFINER AS
+$$ SELECT company_id FROM public.profiles WHERE id = auth.uid() LIMIT 1; $$;
 
--- ─── Función de analytics para el superadmin ─────────────────────────
--- Retorna métricas por empresa sin exponer datos personales de usuarios
--- Solo puede ser llamada via RPC desde el server component
+-- ─── PASO 4: Función de analytics del CEO (sin exponer PII) ──────────
 CREATE OR REPLACE FUNCTION public.get_platform_analytics()
 RETURNS TABLE (
   company_id        uuid,
@@ -38,79 +50,75 @@ RETURNS TABLE (
   services_30d      bigint,
   last_activity     timestamptz
 )
-LANGUAGE sql
-STABLE
-SECURITY DEFINER
-AS $$
+LANGUAGE sql STABLE SECURITY DEFINER AS $$
   SELECT
-    c.id                                        AS company_id,
-    c.name                                      AS company_name,
-    COUNT(DISTINCT p.id)                        AS total_users,
-    COUNT(DISTINCT p.id) FILTER (WHERE p.role = 'operator')   AS total_operators,
-    COUNT(DISTINCT p.id) FILTER (WHERE p.role = 'dispatcher') AS total_dispatchers,
-    COUNT(DISTINCT t.id)                        AS total_trucks,
-    COUNT(DISTINCT s.id) FILTER (
-      WHERE s.created_at >= now() - interval '30 days'
-    )                                           AS services_30d,
-    MAX(p.created_at)                           AS last_activity
+    c.id,
+    c.name,
+    COUNT(DISTINCT p.id),
+    COUNT(DISTINCT p.id) FILTER (WHERE p.role = 'operator'),
+    COUNT(DISTINCT p.id) FILTER (WHERE p.role = 'dispatcher'),
+    COUNT(DISTINCT t.id),
+    COUNT(DISTINCT s.id) FILTER (WHERE s.created_at >= now() - interval '30 days'),
+    MAX(p.created_at)
   FROM public.companies c
-  LEFT JOIN public.profiles  p ON p.company_id = c.id
+  LEFT JOIN public.profiles   p ON p.company_id = c.id
   LEFT JOIN public.tow_trucks t ON t.company_id = c.id
   LEFT JOIN public.services   s ON s.company_id = c.id
   GROUP BY c.id, c.name
-  ORDER BY company_name;
+  ORDER BY c.name;
 $$;
 
--- ─── PROFILES: Limpiar políticas existentes ───────────────────────────
-DROP POLICY IF EXISTS "profiles_select_policy" ON public.profiles;
-DROP POLICY IF EXISTS "Admins can view all profiles in their company" ON public.profiles;
-DROP POLICY IF EXISTS "Users can view own profile" ON public.profiles;
-DROP POLICY IF EXISTS "Users can read own profile" ON public.profiles;
-DROP POLICY IF EXISTS "Enable read access for own profile" ON public.profiles;
+-- ─── PASO 5: Nuevas políticas PROFILES ───────────────────────────────
+-- Regla:
+--   superadmin → solo su propio perfil (usa get_platform_analytics para ver empresas)
+--   admin / dispatcher → todos los perfiles de SU empresa
+--   operator → solo el suyo
 
--- ─── PROFILES: Política con aislamiento correcto ──────────────────────
--- NOTA: superadmin YA NO ve perfiles de otras empresas
-CREATE POLICY "profiles_select_policy" ON public.profiles
-  FOR SELECT
-  USING (
-    -- Siempre ve su propio perfil
+CREATE POLICY "profiles_select" ON public.profiles
+  FOR SELECT USING (
     id = auth.uid()
-    OR
-    -- Admin y dispatcher ven solo los perfiles de SU empresa
-    -- (superadmin NO entra aquí → usa la función analítica en su lugar)
-    (
-      public.get_my_role() IN ('admin', 'dispatcher')
+    OR (
+      public.get_my_role() IN ('admin', 'dispatcher', 'superadmin')
       AND company_id = public.get_my_company_id()
     )
   );
 
--- ─── TOW TRUCKS: Limpiar políticas existentes ────────────────────────
-DROP POLICY IF EXISTS "tow_trucks_select_policy" ON public.tow_trucks;
-DROP POLICY IF EXISTS "tow_trucks_update_policy" ON public.tow_trucks;
-DROP POLICY IF EXISTS "Operators can view their truck" ON public.tow_trucks;
-DROP POLICY IF EXISTS "Smart select on tow_trucks" ON public.tow_trucks;
-DROP POLICY IF EXISTS "Operators can update their truck location" ON public.tow_trucks;
+CREATE POLICY "profiles_update_own" ON public.profiles
+  FOR UPDATE USING (id = auth.uid());
 
--- ─── TOW TRUCKS: Política con aislamiento correcto ───────────────────
-CREATE POLICY "tow_trucks_select_policy" ON public.tow_trucks
-  FOR SELECT
-  USING (
-    -- Admin y dispatcher ven las grúas de SU empresa
+-- ─── PASO 6: Nuevas políticas TOW_TRUCKS ─────────────────────────────
+-- Regla:
+--   superadmin → NINGUNA grúa directamente (no gestiona flotillas de clientes)
+--   admin / dispatcher → solo las grúas de SU empresa
+--   operator → solo su grúa asignada
+
+CREATE POLICY "tow_trucks_select" ON public.tow_trucks
+  FOR SELECT USING (
     (
       public.get_my_role() IN ('admin', 'dispatcher')
       AND company_id = public.get_my_company_id()
     )
-    OR
-    -- Operador ve solo su grúa asignada
-    id = (SELECT tow_truck_id FROM public.profiles WHERE id = auth.uid())
+    OR id = (SELECT tow_truck_id FROM public.profiles WHERE id = auth.uid())
   );
 
--- ─── TOW TRUCKS: Operador puede actualizar su ubicación ──────────────
-CREATE POLICY "tow_trucks_update_policy" ON public.tow_trucks
+CREATE POLICY "tow_trucks_update_own" ON public.tow_trucks
   FOR UPDATE USING (
     id = (SELECT tow_truck_id FROM public.profiles WHERE id = auth.uid())
   );
 
--- ─── Verificar ───────────────────────────────────────────────────────
--- SELECT policyname, tablename, cmd FROM pg_policies
--- WHERE tablename IN ('profiles', 'tow_trucks');
+CREATE POLICY "tow_trucks_insert" ON public.tow_trucks
+  FOR INSERT WITH CHECK (
+    public.get_my_role() IN ('admin', 'superadmin')
+  );
+
+CREATE POLICY "tow_trucks_delete" ON public.tow_trucks
+  FOR DELETE USING (
+    public.get_my_role() IN ('admin', 'superadmin')
+    AND company_id = public.get_my_company_id()
+  );
+
+-- ─── VERIFICAR resultado ──────────────────────────────────────────────
+SELECT policyname, tablename, cmd
+FROM pg_policies
+WHERE tablename IN ('profiles', 'tow_trucks')
+ORDER BY tablename, policyname;
