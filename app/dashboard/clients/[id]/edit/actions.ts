@@ -17,7 +17,7 @@ export async function updateClientWithRates(formData: FormData): Promise<void> {
   // 1. Actualizar nombre del cliente
   await supabase.from('clients').update({ name: clientName }).eq('id', clientId)
 
-  // 2. Construir los costos del nuevo formato
+  // 2. Construir los costos (columnas nuevas)
   const costs: Record<string, number> = {}
   for (const t of ['a', 'b', 'c', 'd']) {
     costs[`costo_local_tipo_${t}`] = parseFloat(formData.get(`costo_local_tipo_${t}`) as string) || 0
@@ -43,23 +43,29 @@ export async function updateClientWithRates(formData: FormData): Promise<void> {
 
   if (!profile?.company_id) return
 
-  // 4. ELIMINAR todas las reglas viejas (cualquier tipo: local, foraneo, general)
-  //    e insertar UNA sola regla en el nuevo formato. Esto es lo que migra datos viejos.
+  // 4. Eliminar TODAS las reglas viejas (cualquier tipo)
   await supabase.from('pricing_rules').delete().eq('client_id', clientId)
 
-  // 5. Insertar la nueva regla unificada (tipo=general)
+  // 5. Insertar fila base con SOLO las columnas originales que PostgREST siempre ha conocido
+  //    (sin las columnas nuevas para evitar el problema de schema cache en INSERT)
   const { error: insertErr } = await supabase.from('pricing_rules').insert({
     client_id:  clientId,
     company_id: profile.company_id,
     tipo:       'general',
     costo_base: 0,
     costo_km:   0,
-    ...costs,
   })
 
   if (insertErr) {
-    console.error('Error guardando tarifas:', insertErr.message)
+    console.error('Error INSERT pricing_rule:', insertErr.message)
+    revalidatePath('/dashboard/clients')
+    redirect('/dashboard/clients')
+    return
   }
+
+  // 6. UPDATE con las columnas nuevas — esto SÍ funciona porque PostgREST
+  //    conoce las nuevas columnas después del NOTIFY de fix_missing_columns.sql
+  await supabase.from('pricing_rules').update(costs).eq('client_id', clientId)
 
   revalidatePath('/dashboard/clients')
   redirect('/dashboard/clients')

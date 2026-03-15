@@ -53,37 +53,38 @@ export default function NewClientPage() {
       return
     }
 
-    // 2. Construir el payload de costos
+    // 2. Construir costos
     const costs: Record<string, number> = {}
-
     for (const t of ['a', 'b', 'c', 'd']) {
       costs[`costo_local_tipo_${t}`] = parseFloat(formData.get(`costo_local_tipo_${t}`) as string) || 0
       costs[`costo_bande_tipo_${t}`] = parseFloat(formData.get(`costo_bande_tipo_${t}`) as string) || 0
       costs[`costo_km_tipo_${t}`]    = parseFloat(formData.get(`costo_km_tipo_${t}`) as string) || 0
     }
-
-    const extraFields = [
+    for (const field of [
       'costo_maniobra', 'costo_hora_espera', 'costo_abanderamiento', 'costo_resguardo',
       'costo_dollys', 'costo_patines', 'costo_go_jacks',
       'costo_rescate_subterraneo', 'costo_adaptacion',
       'costo_blindaje_1', 'costo_blindaje_2', 'costo_blindaje_3', 'costo_blindaje_4',
       'costo_blindaje_5', 'costo_blindaje_6', 'costo_blindaje_7', 'costo_kg_carga'
-    ]
-    for (const field of extraFields) {
+    ]) {
       costs[field] = parseFloat(formData.get(field) as string) || 0
     }
 
-    // 3. Insertar pricing_rule en nuevo formato (tipo=general)
-    const { error: rulesErr } = await supabase.from('pricing_rules').insert({
+    // 3. Insertar fila base con SOLO las columnas originales
+    const { error: insertErr } = await supabase.from('pricing_rules').insert({
       client_id:  newClient.id,
       company_id: companyId,
       tipo:       'general',
       costo_base: 0,
       costo_km:   0,
-      ...costs,
     })
 
-    if (rulesErr) console.error('Error creando tarifas:', rulesErr.message)
+    if (!insertErr) {
+      // 4. UPDATE con las columnas nuevas (funciona porque schema cache sí las conoce para UPDATE)
+      await supabase.from('pricing_rules').update(costs).eq('client_id', newClient.id)
+    } else {
+      console.error('Error INSERT pricing_rule:', insertErr.message)
+    }
 
     redirect('/dashboard/clients')
   }
