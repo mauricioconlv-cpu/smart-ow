@@ -1,9 +1,12 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { createClient } from '@/lib/supabase/client'
+import dynamic from 'next/dynamic'
 import PlateGate from './PlateGate'
-import OperatorTracker from './OperatorTracker'
+
+// OperatorTracker MUST be loaded with SSR disabled — it uses browser geolocation and
+// calls createClient() which accesses localStorage (unavailable on server)
+const OperatorTracker = dynamic(() => import('./OperatorTracker'), { ssr: false })
 
 interface Truck {
   id: string
@@ -21,10 +24,6 @@ interface OperatorShellProps {
   children: React.ReactNode
 }
 
-/**
- * OperatorShell — Shows PlateGate if no truck is linked, otherwise shows dashboard.
- * Re-checks on the client to avoid stale SSR cache.
- */
 export default function OperatorShell({
   operatorId,
   operatorName,
@@ -32,42 +31,41 @@ export default function OperatorShell({
   initialTruck,
   children,
 }: OperatorShellProps) {
-  // Start with the server-side value; re-validate on client
   const [truck, setTruck] = useState<Truck | null>(initialTruck)
-  const [checked, setChecked] = useState(false)
+  const [checked, setChecked] = useState(!!initialTruck) // if server already knows the truck, skip re-check
 
   useEffect(() => {
-    // Re-validate on client in case SSR was stale
-    const supabase = createClient()
-    supabase
-      .from('profiles')
-      .select('tow_truck_id')
-      .eq('id', operatorId)
-      .single()
-      .then(async ({ data: profileData }) => {
-        if (!profileData?.tow_truck_id) {
-          setTruck(null)
+    if (checked) return // Already have verified data from server
+
+    // Re-validate since SSR value could be stale
+    import('@/lib/supabase/client').then(({ createClient }) => {
+      const supabase = createClient()
+      supabase
+        .from('profiles')
+        .select('tow_truck_id')
+        .eq('id', operatorId)
+        .single()
+        .then(async ({ data: profileData }) => {
+          if (!profileData?.tow_truck_id) {
+            setTruck(null)
+            setChecked(true)
+            return
+          }
+          const { data: truckData } = await supabase
+            .from('tow_trucks')
+            .select('id, unit_number, brand, model, plates')
+            .eq('id', profileData.tow_truck_id)
+            .single()
+
+          setTruck(truckData || null)
           setChecked(true)
-          return
-        }
-        // Fetch truck separately
-        const { data: truckData } = await supabase
-          .from('tow_trucks')
-          .select('id, unit_number, brand, model, plates')
-          .eq('id', profileData.tow_truck_id)
-          .single()
+        })
+        .catch(() => setChecked(true))
+    })
+  }, [operatorId, checked])
 
-        setTruck(truckData || null)
-        setChecked(true)
-      })
-      .catch(() => {
-        // On error, trust the server value
-        setChecked(true)
-      })
-  }, [operatorId])
-
-  // Loading state while re-checking
-  if (!checked && !initialTruck) {
+  // Loading while we verify
+  if (!checked) {
     return (
       <div style={{
         minHeight: '100vh', display: 'flex', flexDirection: 'column',
@@ -86,17 +84,12 @@ export default function OperatorShell({
     )
   }
 
-  // No truck linked → show the plate gate (PlateGate handles reload after success)
+  // No truck → plate gate
   if (!truck) {
-    return (
-      <PlateGate
-        operatorName={operatorName}
-        avatarUrl={avatarUrl}
-      />
-    )
+    return <PlateGate operatorName={operatorName} avatarUrl={avatarUrl} />
   }
 
-  // Truck linked → show GPS tracker + dashboard content
+  // Truck linked → GPS tracker (client-only) + dashboard content
   return (
     <>
       <OperatorTracker operatorId={operatorId} truckId={truck.id} />
