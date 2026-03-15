@@ -14,7 +14,7 @@ const LiveMap = dynamic(() => import('./components/Map'), {
 type TabType = 'abierto' | 'cotizacion' | 'cancelado_momento' | 'cancelado_posterior'
 
 export default function LiveMonitorPage() {
-  const [activeTab, setActiveTab] = useState<TabType>('cotizacion')
+  const [activeTab, setActiveTab] = useState<TabType>('abierto')
   const [services, setServices] = useState<any[]>([])
   const [operators, setOperators] = useState<any[]>([])
   const [currentTime, setCurrentTime] = useState(Date.now())
@@ -55,26 +55,39 @@ export default function LiveMonitorPage() {
     return () => { supabase.removeChannel(channel) }
   }, [])
 
+  // Contadores por pestaña
+  const tabCounts = useMemo(() => ({
+    abierto: services.filter(s =>
+      !['creado','en_captura','sin_operador','cotizacion','asignando','cancelado_momento','cancelado_posterior','terminado','servicio_cerrado'].includes(s.status)
+    ).length,
+    cotizacion: services.filter(s =>
+      ['creado','en_captura','sin_operador','cotizacion','asignando'].includes(s.status)
+    ).length,
+    cancelado_momento: services.filter(s => s.status === 'cancelado_momento').length,
+    cancelado_posterior: services.filter(s => s.status === 'cancelado_posterior').length,
+  }), [services])
+
   // Filtrado por búsqueda O por pestaña
   const filteredServices = useMemo(() => {
     const q = searchQuery.trim().toLowerCase()
 
-    // Si hay búsqueda activa, filtrar por folio o número de expediente (ignorar pestaña)
+    // Si hay búsqueda activa, buscar en folio interno, número expediente Y folio aseguradora
     if (q) {
       return services.filter(s => {
-        const folioMatch = String(s.folio).includes(q)
-        const expedienteMatch = (s.numero_expediente || '').toLowerCase().includes(q)
-        return folioMatch || expedienteMatch
+        const folioMatch       = String(s.folio).includes(q)
+        const expedienteMatch  = (s.numero_expediente  || '').toLowerCase().includes(q)
+        const insuranceMatch   = (s.insurance_folio    || '').toLowerCase().includes(q)
+        return folioMatch || expedienteMatch || insuranceMatch
       })
     }
 
     // Sin búsqueda: filtrar por pestaña normalmente
     return services.filter(s => {
       switch (activeTab) {
-        case 'cotizacion':
-          return ['creado', 'en_captura', 'sin_operador'].includes(s.status)
         case 'abierto':
-          return !['creado', 'en_captura', 'sin_operador', 'cancelado_momento', 'cancelado_posterior', 'terminado', 'servicio_cerrado'].includes(s.status)
+          return !['creado','en_captura','sin_operador','cotizacion','asignando','cancelado_momento','cancelado_posterior','terminado','servicio_cerrado'].includes(s.status)
+        case 'cotizacion':
+          return ['creado','en_captura','sin_operador','cotizacion','asignando'].includes(s.status)
         case 'cancelado_momento':
           return s.status === 'cancelado_momento'
         case 'cancelado_posterior':
@@ -175,10 +188,10 @@ export default function LiveMonitorPage() {
         
         {/* Barra superior: Tabs + Buscador */}
         <div className="flex items-center border-b border-slate-200 bg-slate-50 overflow-x-auto gap-0">
-          <TabButton active={activeTab==='cotizacion'} onClick={()=>{setActiveTab('cotizacion'); setSearchQuery('')}}>Exp. en Cotización</TabButton>
-          <TabButton active={activeTab==='abierto'} onClick={()=>{setActiveTab('abierto'); setSearchQuery('')}}>Servicios Abiertos</TabButton>
-          <TabButton active={activeTab==='cancelado_momento'} onClick={()=>{setActiveTab('cancelado_momento'); setSearchQuery('')}}>Cancelados Inmediatos</TabButton>
-          <TabButton active={activeTab==='cancelado_posterior'} onClick={()=>{setActiveTab('cancelado_posterior'); setSearchQuery('')}}>Cancelados Posterior</TabButton>
+          <TabButton active={activeTab==='abierto'} count={tabCounts.abierto} onClick={()=>{setActiveTab('abierto'); setSearchQuery('')}}>Servicios Abiertos</TabButton>
+          <TabButton active={activeTab==='cotizacion'} count={tabCounts.cotizacion} onClick={()=>{setActiveTab('cotizacion'); setSearchQuery('')}}>Exp. en Cotización</TabButton>
+          <TabButton active={activeTab==='cancelado_momento'} count={tabCounts.cancelado_momento} onClick={()=>{setActiveTab('cancelado_momento'); setSearchQuery('')}}>Cancelados Inmediatos</TabButton>
+          <TabButton active={activeTab==='cancelado_posterior'} count={tabCounts.cancelado_posterior} onClick={()=>{setActiveTab('cancelado_posterior'); setSearchQuery('')}}>Cancelados Posterior</TabButton>
 
           {/* Buscador de servicios */}
           <div className="ml-auto flex-shrink-0 px-3 py-2">
@@ -287,14 +300,21 @@ export default function LiveMonitorPage() {
   )
 }
 
-function TabButton({ children, active, onClick }: { children: React.ReactNode, active: boolean, onClick: ()=>void }) {
+function TabButton({ children, active, onClick, count }: { children: React.ReactNode, active: boolean, onClick: ()=>void, count?: number }) {
     return (
         <button 
            onClick={onClick}
-           className={`px-6 py-4 text-sm font-bold uppercase tracking-wider shrink-0 transition-all border-b-2 
+           className={`px-5 py-4 text-sm font-bold uppercase tracking-wider shrink-0 transition-all border-b-2 flex items-center gap-2
             ${active ? 'border-blue-600 text-blue-700 bg-white' : 'border-transparent text-slate-500 hover:text-slate-800 hover:bg-slate-100'}`}
         >
             {children}
+            {count !== undefined && count > 0 && (
+              <span className={`text-xs font-black px-1.5 py-0.5 rounded-full min-w-[20px] text-center ${
+                active ? 'bg-blue-600 text-white' : 'bg-slate-200 text-slate-600'
+              }`}>
+                {count}
+              </span>
+            )}
         </button>
     )
 }
