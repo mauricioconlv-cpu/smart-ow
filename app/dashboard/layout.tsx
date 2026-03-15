@@ -1,10 +1,11 @@
-import { Truck, Users, Map, Settings, LogOut, FileText } from 'lucide-react'
+import { Users, Map, Settings, LogOut, FileText, Truck, Radio } from 'lucide-react'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import EmergencyNotifier from './components/EmergencyNotifier'
 import WelcomeBanner from './components/WelcomeBanner'
-
+import SidebarLogo from './components/SidebarLogo'
+import NavItemClient from './components/NavItemClient'
 
 export default async function DashboardLayout({
   children,
@@ -13,6 +14,24 @@ export default async function DashboardLayout({
 }) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
+  if (!user) redirect('/login')
+
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('role, company_id, full_name, avatar_url')
+    .eq('id', user.id)
+    .single()
+
+  // Obtener logo de la empresa
+  let company: { name: string; logo_url: string | null } | null = null
+  if (profile?.company_id) {
+    const { data } = await supabase
+      .from('companies')
+      .select('name, logo_url')
+      .eq('id', profile.company_id)
+      .single()
+    company = data
+  }
 
   const handleLogout = async () => {
     'use server'
@@ -21,64 +40,73 @@ export default async function DashboardLayout({
     redirect('/login')
   }
 
+  const navLinks = [
+    { href: '/dashboard',         icon: Map,      label: 'Monitor en Vivo', live: true },
+    { href: '/dashboard/services',icon: Radio,     label: 'Servicios' },
+    { href: '/dashboard/reports', icon: FileText,  label: 'Reportes e Historial' },
+    { href: '/dashboard/clients', icon: Users,     label: 'Aseguradoras' },
+    { href: '/dashboard/fleet',   icon: Truck,     label: 'Flotilla de Grúas' },
+    { href: '/dashboard/users',   icon: Users,     label: 'Usuarios y Empleados' },
+    { href: '/dashboard/settings',icon: Settings,  label: 'Configuración' },
+  ]
+
   return (
-    <div className="flex h-screen bg-gray-100">
-      {/* Sidebar */}
-      <aside className="w-64 bg-slate-900 text-white flex flex-col">
-        <div className="p-4 flex items-center space-x-3 bg-slate-950">
-          <Truck className="h-8 w-8 text-blue-400" />
-          <span className="text-xl font-bold">Smart Tow</span>
-        </div>
-        
-        <nav className="flex-1 p-4 space-y-2">
-          <Link href="/dashboard" className="flex items-center space-x-3 p-3 rounded-lg hover:bg-slate-800 transition-colors">
-            <Map className="h-5 w-5 text-gray-400" />
-            <span>Monitor en Vivo</span>
-          </Link>
-          <Link href="/dashboard/services" className="flex items-center space-x-3 p-3 rounded-lg hover:bg-slate-800 transition-colors">
-            <Map className="h-5 w-5 text-gray-400" />
-            <span>Servicios</span>
-          </Link>
-          <Link href="/dashboard/reports" className="flex items-center space-x-3 p-3 rounded-lg hover:bg-slate-800 transition-colors">
-            <FileText className="h-5 w-5 text-gray-400" />
-            <span>Reportes e Historial</span>
-          </Link>
-          <Link href="/dashboard/clients" className="flex items-center space-x-3 p-3 rounded-lg hover:bg-slate-800 transition-colors">
-            <Users className="h-5 w-5 text-gray-400" />
-            <span>Aseguradoras</span>
-          </Link>
-          <Link href="/dashboard/fleet" className="flex items-center space-x-3 p-3 rounded-lg hover:bg-slate-800 transition-colors">
-            <Truck className="h-5 w-5 text-gray-400" />
-            <span>Flotilla de Grúas</span>
-          </Link>
-          <Link href="/dashboard/users" className="flex items-center space-x-3 p-3 rounded-lg hover:bg-slate-800 transition-colors">
-            <Users className="h-5 w-5 text-gray-400" />
-            <span>Usuarios y Empleados</span>
-          </Link>
-          <Link href="/dashboard/settings" className="flex items-center space-x-3 p-3 rounded-lg hover:bg-slate-800 transition-colors">
-            <Settings className="h-5 w-5 text-gray-400" />
-            <span>Configuración</span>
-          </Link>
+    <div className="flex h-screen overflow-hidden" style={{ background: 'var(--bg-base)' }}>
+
+      {/* ── SIDEBAR ── */}
+      <aside className="sidebar-glass w-64 flex flex-col z-20 flex-shrink-0">
+
+        {/* Logo Header */}
+        <SidebarLogo company={company} />
+
+        {/* Glow divider */}
+        <div className="glow-divider mx-4" />
+
+        {/* Navigation */}
+        <nav className="flex-1 px-3 py-2 space-y-0.5 overflow-y-auto">
+          {navLinks.map(({ href, icon: Icon, label, live }) => (
+            <NavItemClient key={href} href={href} label={label} live={live}>
+              <Icon className="nav-icon h-[18px] w-[18px] flex-shrink-0 transition-all duration-200" />
+            </NavItemClient>
+          ))}
         </nav>
 
-        <div className="p-4 bg-slate-950">
-           <form action={handleLogout}>
-            <button type="submit" className="flex w-full items-center space-x-3 p-3 rounded-lg hover:bg-slate-800 transition-colors text-red-400">
-              <LogOut className="h-5 w-5" />
+        {/* Glow divider */}
+        <div className="glow-divider mx-4" />
+
+        {/* Footer / Logout */}
+        <div className="p-3">
+          <form action={handleLogout}>
+            <button
+              type="submit"
+              className="nav-item w-full text-rose-400 hover:text-rose-300 hover:bg-rose-500/10 hover:border-rose-500/20"
+            >
+              <LogOut className="h-[18px] w-[18px] flex-shrink-0" />
               <span>Cerrar Sesión</span>
             </button>
           </form>
-          <p className="px-3 pt-3 text-xs text-gray-500 truncate">{user?.email}</p>
+          <p className="px-3 pt-2 text-xs text-slate-600 truncate font-mono">
+            {profile?.full_name || user.email}
+          </p>
         </div>
       </aside>
 
-      {/* Main Content */}
-      <main className="flex-1 flex flex-col overflow-hidden relative">
+      {/* ── MAIN ── */}
+      <main className="flex-1 flex flex-col overflow-hidden relative main-content-bg">
         <EmergencyNotifier />
-        <header className="bg-white shadow-sm h-16 flex items-center justify-between px-6">
-          <h1 className="text-xl font-semibold text-gray-800">Call Center</h1>
+
+        {/* Top Header */}
+        <header className="header-glass h-14 flex items-center justify-between px-6 z-10 flex-shrink-0">
+          <div className="flex items-center gap-3">
+            <div className="live-dot" />
+            <span className="text-sm font-semibold text-slate-300 tracking-wide uppercase">
+              Call Center
+            </span>
+          </div>
           <WelcomeBanner />
         </header>
+
+        {/* Content */}
         <div className="flex-1 overflow-auto p-6">
           {children}
         </div>
