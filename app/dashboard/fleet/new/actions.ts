@@ -23,34 +23,29 @@ export async function addTowTruck(prevState: any, formData: FormData) {
 
   // 2. Extraer datos del formulario
   const tools = formData.getAll('tools') as string[]
-  const data = {
-    company_id: profile.company_id,
-    brand: formData.get('brand') as string,
-    model: formData.get('model') as string,
-    serial_number: formData.get('serial_number') as string,
-    economic_number: formData.get('economic_number') as string,
-    plates: formData.get('plates') as string,
-    unit_type: formData.get('unit_type') as string || null,
-    tools: tools.length > 0 ? tools : [],
-    // Coordenadas simuladas de base/encendido
-    current_lat: 19.4326,
-    current_lng: -99.1332, 
-    is_active: true
-  }
 
-  // 3. Insertar en BD
-  const { error } = await supabase.from('tow_trucks').insert(data)
+  // 3. Usar RPC para evitar el problema del schema cache de PostgREST
+  const { data: result, error } = await supabase.rpc('rpc_insert_tow_truck', {
+    p_company_id:      profile.company_id,
+    p_brand:           formData.get('brand') as string,
+    p_model:           formData.get('model') as string,
+    p_serial_number:   (formData.get('serial_number') as string) || '',
+    p_economic_number: formData.get('economic_number') as string,
+    p_plates:          formData.get('plates') as string,
+    p_unit_type:       (formData.get('unit_type') as string) || null,
+    p_tools:           tools.length > 0 ? tools : [],
+    p_current_lat:     19.4326,
+    p_current_lng:     -99.1332,
+  })
 
   if (error) {
-    console.error('Error adding tow truck:', error)
-    // Si el error es de schema cache, dar instrucción clara al usuario
-    if (error.message?.includes('schema cache') || error.message?.includes('column')) {
-      return { error: `Error de base de datos: ${error.message}. Ve a Supabase → SQL Editor y ejecuta: NOTIFY pgrst, 'reload schema';` }
-    }
-    if (error.code === '23505') {
-      return { error: 'Ya existe una grúa con ese número económico o placas. Usa uno diferente.' }
-    }
+    console.error('RPC error adding tow truck:', error)
     return { error: `Error al registrar: ${error.message}` }
+  }
+
+  const res = result as any
+  if (res?.error) {
+    return { error: res.error }
   }
 
   revalidatePath('/dashboard/fleet')
@@ -60,7 +55,7 @@ export async function addTowTruck(prevState: any, formData: FormData) {
 export async function updateTowTruck(id: string, formData: FormData) {
   const supabase = await createClient()
 
-  // 1. Obtener la compañía del administrador actual
+  // 1. Verificar permisos
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: 'No autorizado' }
 
@@ -75,20 +70,30 @@ export async function updateTowTruck(id: string, formData: FormData) {
   }
 
   const tools = formData.getAll('tools') as string[]
-  const payload = {
-    brand: formData.get('brand') as string,
-    model: formData.get('model') as string,
-    serial_number: formData.get('serial_number') as string,
-    economic_number: formData.get('economic_number') as string,
-    plates: formData.get('plates') as string,
-    unit_type: formData.get('unit_type') as string || null,
-    tools: tools.length > 0 ? tools : [],
-    is_active: formData.get('is_active') === 'true'
+
+  // 2. Usar RPC para evitar el schema cache de PostgREST
+  const { data: result, error } = await supabase.rpc('rpc_update_tow_truck', {
+    p_id:              id,
+    p_brand:           formData.get('brand') as string,
+    p_model:           formData.get('model') as string,
+    p_serial_number:   (formData.get('serial_number') as string) || '',
+    p_economic_number: formData.get('economic_number') as string,
+    p_plates:          formData.get('plates') as string,
+    p_unit_type:       (formData.get('unit_type') as string) || null,
+    p_tools:           tools.length > 0 ? tools : [],
+    p_is_active:       formData.get('is_active') === 'true',
+  })
+
+  if (error) {
+    console.error('RPC error updating tow truck:', error)
+    return { error: `Error al actualizar: ${error.message}` }
   }
 
-  const { error } = await supabase.from('tow_trucks').update(payload).eq('id', id)
-  if (error) return { error: error.message }
-  
+  const res = result as any
+  if (res?.error) {
+    return { error: res.error }
+  }
+
   revalidatePath('/dashboard/fleet')
   return { success: true }
 }
@@ -117,7 +122,6 @@ export async function deleteTowTruck(id: string) {
 
   if (error) return { error: error.message }
 
-  // Si no se eliminó ninguna fila, RLS bloqueó silenciosamente la operación
   if (!deleted || deleted.length === 0) {
     return { error: 'No se pudo eliminar la grúa. Verifica que tus permisos de BD estén correctos (RLS).' }
   }
