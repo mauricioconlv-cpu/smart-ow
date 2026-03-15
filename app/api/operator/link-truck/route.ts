@@ -37,12 +37,12 @@ export async function POST(req: NextRequest) {
     // Buscar grúa por placas — obtenemos todas para filtrar en JS inmune a espacios
     // Usamos service role para saltarnos RLS
     const adminClient = createAdminClient()
-    const { data: allTrucks } = await adminClient
+    const { data: allTrucks, error: searchErr } = await adminClient
       .from('tow_trucks')
-      .select('id, unit_number, brand, model, plates, is_active')
+      .select('id, economic_number, brand, model, plates, is_active')
 
-    if (!allTrucks) {
-      return NextResponse.json({ error: 'Error al consultar la flotilla.' }, { status: 500 })
+    if (searchErr || !allTrucks) {
+      return NextResponse.json({ error: `Error DB: ${searchErr?.message || 'sin datos'}` }, { status: 500 })
     }
 
     const truck = allTrucks.find(t => {
@@ -58,7 +58,7 @@ export async function POST(req: NextRequest) {
 
     if (!truck.is_active) {
       return NextResponse.json({
-        error: `La grúa ${truck.unit_number} (${truck.plates}) está en mantenimiento y no puede operar.`
+        error: `La grúa ${truck.economic_number} (${truck.plates}) está en mantenimiento y no puede operar.`
       }, { status: 409 })
     }
 
@@ -69,7 +69,7 @@ export async function POST(req: NextRequest) {
       .eq('tow_truck_id', truck.id)
 
     // Vincular al operador actual
-    const grua_label = `${truck.unit_number} (${truck.plates})`
+    const grua_label = `${truck.economic_number} (${truck.plates})`
     const { error: profileErr } = await adminClient
       .from('profiles')
       .update({
@@ -86,7 +86,7 @@ export async function POST(req: NextRequest) {
       success: true,
       truck: {
         id: truck.id,
-        unit_number: truck.unit_number,
+        economic_number: truck.economic_number,
         brand: truck.brand,
         model: truck.model,
         plates: truck.plates,

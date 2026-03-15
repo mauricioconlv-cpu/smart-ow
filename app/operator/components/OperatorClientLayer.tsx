@@ -11,7 +11,7 @@ const AssignedTruckBanner = dynamic(() => import('./AssignedTruckBanner'), { ssr
 
 interface Truck {
   id: string
-  unit_number: string
+  economic_number: string
   brand: string
   model: string
   plates: string
@@ -70,7 +70,7 @@ export default function OperatorClientLayer({
 
         const { data: truckData } = await supabase
           .from('tow_trucks')
-          .select('id, unit_number, brand, model, plates')
+          .select('id, economic_number, brand, model, plates')
           .eq('id', profileData.tow_truck_id)
           .single()
 
@@ -113,7 +113,7 @@ export default function OperatorClientLayer({
 
       {/* Truck banner with end-shift button */}
       <AssignedTruckBanner
-        unit_number={truck.unit_number}
+        economic_number={truck.economic_number}
         plates={truck.plates}
         brand={truck.brand ?? ''}
         model={truck.model ?? ''}

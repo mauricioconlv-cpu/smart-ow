@@ -3,13 +3,13 @@
 import { Truck, LogOut } from 'lucide-react'
 
 interface AssignedTruckBannerProps {
-  unit_number: string
+  economic_number: string
   plates: string
   brand: string
   model: string
 }
 
-export default function AssignedTruckBanner({ unit_number, plates, brand, model }: AssignedTruckBannerProps) {
+export default function AssignedTruckBanner({ economic_number, plates, brand, model }: AssignedTruckBannerProps) {
   async function handleEndShift() {
     await fetch('/api/operator/link-truck', { method: 'DELETE' })
     window.location.reload()
@@ -23,7 +23,7 @@ export default function AssignedTruckBanner({ unit_number, plates, brand, model 
       <div className="flex-1">
         <h3 className="text-sm font-medium text-blue-100">Unidad Asignada</h3>
         <p className="font-bold text-xl">
-          {unit_number}{' '}
+          {economic_number}{' '}
           <span className="text-sm font-normal text-blue-200 ml-1">({plates})</span>
         </p>
         <p className="text-xs text-blue-200 mt-0.5">{brand} {model}</p>

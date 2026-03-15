@@ -18,11 +18,11 @@ export default async function OperatorDashboard() {
     .single()
 
   // Fetch linked truck if profile has one
-  let truck: { id: string; unit_number: string; brand: string; model: string; plates: string } | null = null
+  let truck: { id: string; economic_number: string; brand: string; model: string; plates: string } | null = null
   if (profile?.tow_truck_id) {
     const { data: truckData } = await supabase
       .from('tow_trucks')
-      .select('id, unit_number, brand, model, plates')
+      .select('id, economic_number, brand, model, plates')
       .eq('id', profile.tow_truck_id)
       .single()
     truck = truckData
