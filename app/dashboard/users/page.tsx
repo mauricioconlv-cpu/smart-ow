@@ -1,8 +1,9 @@
 import { createClient } from '@/lib/supabase/server'
 import Link from 'next/link'
-import { Plus, Shield, MapPin, Truck, User, Phone, DollarSign } from 'lucide-react'
+import { Plus, Shield, MapPin, Truck, User, Phone, DollarSign, BarChart3 } from 'lucide-react'
 import UserRowActions from './components/UserRowActions'
 import PasswordRequestsPanel from './components/PasswordRequestsPanel'
+import SuperadminAnalytics from './components/SuperadminAnalytics'
 
 export default async function UsersPage() {
   const supabase = await createClient()
@@ -16,6 +17,27 @@ export default async function UsersPage() {
     .eq('id', user.id)
     .single()
 
+  // ── Superadmin: redirigir a vista analítica ─────────────────────────
+  if (currentProfile?.role === 'superadmin') {
+    return (
+      <div className="p-6 max-w-5xl mx-auto space-y-6">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div>
+            <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2">
+              <BarChart3 className="w-6 h-6 text-violet-600" />
+              Panel de Plataforma
+            </h1>
+            <p className="text-sm text-slate-500 mt-1">
+              Métricas agregadas por empresa · Los perfiles individuales son privados por diseño
+            </p>
+          </div>
+        </div>
+        <SuperadminAnalytics />
+      </div>
+    )
+  }
+
+  // ── Admin / Dispatcher: lista de usuarios de la empresa ─────────────
   const { data: profiles } = await supabase
     .from('profiles')
     .select(`
