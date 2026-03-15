@@ -388,6 +388,12 @@ export default function ServiceCapturePage() {
       setIsEditing(false)
       setHasData(true)
       setIsSaving(false)
+
+      // Si se va a asignar grúa, navegar a la pantalla de asignación
+      if (newStatus === 'asignando') {
+        router.push(`/dashboard/services/${id}/assign`)
+        return
+      }
     } catch (err: any) {
       setSaveErr(err.message)
       setIsSaving(false)
