@@ -46,6 +46,7 @@ export default function SettingsForm({
     setSuccess(false)
 
     try {
+      // 1. Subir imagen al bucket de Storage
       const ext  = logoFile.name.split('.').pop()
       const path = `${companyId}/logo.${ext}`
 
@@ -53,27 +54,47 @@ export default function SettingsForm({
         .from('logos')
         .upload(path, logoFile, { upsert: true, contentType: logoFile.type })
 
-      if (uploadErr) throw new Error('Error al subir logo: ' + uploadErr.message)
+      if (uploadErr) {
+        // Si el bucket no existe aún, avisar con mensaje claro
+        throw new Error(
+          uploadErr.message.includes('Bucket not found')
+            ? 'El bucket de logos no existe. Ejecuta add_company_logo.sql en Supabase primero.'
+            : 'Error al subir imagen: ' + uploadErr.message
+        )
+      }
 
+      // 2. Obtener URL pública con cache-bust
       const { data: urlData } = supabase.storage.from('logos').getPublicUrl(path)
-      const publicUrl = `${urlData.publicUrl}?t=${Date.now()}`
+      const publicUrl = `${urlData.publicUrl}?v=${Date.now()}`
 
-      const { error: updateErr } = await supabase
-        .from('companies')
-        .update({ logo_url: publicUrl })
-        .eq('id', companyId)
+      // 3. Guardar en companies via API route (service role, sin RLS)
+      const res = await fetch('/api/company/logo', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ companyId, logo_url: publicUrl }),
+      })
 
-      if (updateErr) throw new Error('Error al guardar: ' + updateErr.message)
+      const result = await res.json()
+      if (!res.ok || result.error) {
+        throw new Error(result.error || 'Error al actualizar en la base de datos.')
+      }
 
       setLogoPreview(publicUrl)
       setLogoFile(null)
       setSuccess(true)
+
+      // 4. Recargar la página automáticamente tras 1.5s para mostrar el logo en sidebar
+      setTimeout(() => {
+        window.location.reload()
+      }, 1500)
+
     } catch (err: any) {
       setError(err.message || 'Error inesperado.')
     } finally {
       setIsSaving(false)
     }
   }
+
 
   return (
     <div className="space-y-6">
@@ -156,7 +177,7 @@ export default function SettingsForm({
             {success && (
               <div className="flex items-center gap-2 text-green-400 text-sm">
                 <CheckCircle2 className="w-4 h-4" />
-                Logo guardado correctamente. Recarga la página para verlo en la sidebar.
+                ✅ Logo guardado. Recargando automáticamente...
               </div>
             )}
 
