@@ -53,13 +53,13 @@ export default function NewClientPage() {
       return
     }
 
-    // 2. Construir payload de costos
-    const payload: Record<string, any> = { client_id: newClient.id }
+    // 2. Construir el payload de costos
+    const costs: Record<string, number> = {}
 
     for (const t of ['a', 'b', 'c', 'd']) {
-      payload[`costo_local_tipo_${t}`] = parseFloat(formData.get(`costo_local_tipo_${t}`) as string) || 0
-      payload[`costo_bande_tipo_${t}`] = parseFloat(formData.get(`costo_bande_tipo_${t}`) as string) || 0
-      payload[`costo_km_tipo_${t}`]    = parseFloat(formData.get(`costo_km_tipo_${t}`) as string) || 0
+      costs[`costo_local_tipo_${t}`] = parseFloat(formData.get(`costo_local_tipo_${t}`) as string) || 0
+      costs[`costo_bande_tipo_${t}`] = parseFloat(formData.get(`costo_bande_tipo_${t}`) as string) || 0
+      costs[`costo_km_tipo_${t}`]    = parseFloat(formData.get(`costo_km_tipo_${t}`) as string) || 0
     }
 
     const extraFields = [
@@ -67,16 +67,23 @@ export default function NewClientPage() {
       'costo_dollys', 'costo_patines', 'costo_go_jacks',
       'costo_rescate_subterraneo', 'costo_adaptacion',
       'costo_blindaje_1', 'costo_blindaje_2', 'costo_blindaje_3', 'costo_blindaje_4',
-      'costo_blindaje_5', 'costo_blindaje_6', 'costo_blindaje_7',
-      'costo_kg_carga'
+      'costo_blindaje_5', 'costo_blindaje_6', 'costo_blindaje_7', 'costo_kg_carga'
     ]
     for (const field of extraFields) {
-      payload[field] = parseFloat(formData.get(field) as string) || 0
+      costs[field] = parseFloat(formData.get(field) as string) || 0
     }
 
-    // 3. Guardar tarifas via RPC (bypasea el schema cache de PostgREST)
-    const { data: rpcResult, error: rpcErr } = await supabase.rpc('upsert_client_rates', { payload })
-    if (rpcErr) console.error('RPC error guardando tarifas:', rpcErr.message)
+    // 3. Insertar pricing_rule en nuevo formato (tipo=general)
+    const { error: rulesErr } = await supabase.from('pricing_rules').insert({
+      client_id:  newClient.id,
+      company_id: companyId,
+      tipo:       'general',
+      costo_base: 0,
+      costo_km:   0,
+      ...costs,
+    })
+
+    if (rulesErr) console.error('Error creando tarifas:', rulesErr.message)
 
     redirect('/dashboard/clients')
   }
