@@ -3,8 +3,15 @@
 -- Ejecutar en Supabase SQL Editor
 -- =====================================================================
 
--- Política: Solo admins/superadmins de la empresa pueden actualizarla
-CREATE POLICY IF NOT EXISTS "Admins can update their own company"
+-- Asegurar columnas logo
+ALTER TABLE public.companies
+  ADD COLUMN IF NOT EXISTS logo_url  text,
+  ADD COLUMN IF NOT EXISTS logo_name text;
+
+-- Crear política UPDATE (primero la eliminamos si ya existe)
+DROP POLICY IF EXISTS "Admins can update their own company" ON public.companies;
+
+CREATE POLICY "Admins can update their own company"
   ON public.companies
   FOR UPDATE
   USING (
@@ -29,7 +36,20 @@ INSERT INTO storage.buckets (id, name, public)
 VALUES ('logos', 'logos', true)
 ON CONFLICT (id) DO NOTHING;
 
--- Asegurar columnas logo (por si no se corrió add_company_logo.sql antes)
-ALTER TABLE public.companies
-  ADD COLUMN IF NOT EXISTS logo_url  text,
-  ADD COLUMN IF NOT EXISTS logo_name text;
+-- Verificar políticas de storage para logos
+DROP POLICY IF EXISTS "logos_public_select"  ON storage.objects;
+DROP POLICY IF EXISTS "logos_auth_insert"    ON storage.objects;
+DROP POLICY IF EXISTS "logos_auth_update"    ON storage.objects;
+DROP POLICY IF EXISTS "logos_auth_delete"    ON storage.objects;
+
+CREATE POLICY "logos_public_select" ON storage.objects
+  FOR SELECT USING (bucket_id = 'logos');
+
+CREATE POLICY "logos_auth_insert" ON storage.objects
+  FOR INSERT WITH CHECK (bucket_id = 'logos' AND auth.role() = 'authenticated');
+
+CREATE POLICY "logos_auth_update" ON storage.objects
+  FOR UPDATE USING (bucket_id = 'logos' AND auth.role() = 'authenticated');
+
+CREATE POLICY "logos_auth_delete" ON storage.objects
+  FOR DELETE USING (bucket_id = 'logos' AND auth.role() = 'authenticated');

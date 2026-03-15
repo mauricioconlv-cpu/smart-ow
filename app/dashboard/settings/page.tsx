@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { Settings } from 'lucide-react'
 import SettingsForm from './SettingsForm'
+import PasswordChangeSection from './PasswordChangeSection'
 
 export default async function SettingsPage() {
   const supabase = await createClient()
@@ -14,22 +15,14 @@ export default async function SettingsPage() {
     .eq('id', user.id)
     .single()
 
-  if (!profile || !profile.company_id) {
-    return (
-      <div className="p-8 text-center text-slate-500">
-        No tienes empresa asignada.
-      </div>
-    )
-  }
-
-  const { data: company } = await supabase
+  const { data: company } = profile?.company_id ? await supabase
     .from('companies')
     .select('id, name, logo_url')
     .eq('id', profile.company_id)
-    .single()
+    .single() : { data: null }
 
-  const isSuperAdmin = profile.role === 'superadmin'
-  const canEdit = isSuperAdmin || profile.role === 'admin'
+  const isSuperAdmin = profile?.role === 'superadmin'
+  const canEdit      = isSuperAdmin || profile?.role === 'admin'
 
   return (
     <div className="max-w-2xl mx-auto space-y-6">
@@ -41,22 +34,33 @@ export default async function SettingsPage() {
         <div>
           <h2 className="text-2xl font-bold text-white">Configuración</h2>
           <p className="text-sm text-slate-400 mt-0.5">
-            Personaliza la identidad visual de tu empresa
+            Identidad visual y seguridad de tu cuenta
           </p>
         </div>
       </div>
 
-      {canEdit ? (
+      {/* Logo de empresa (solo admin/superadmin) */}
+      {canEdit && company ? (
         <SettingsForm
-          companyId={company?.id || ''}
-          companyName={company?.name || ''}
-          currentLogoUrl={company?.logo_url || null}
+          companyId={company.id}
+          companyName={company.name}
+          currentLogoUrl={company.logo_url || null}
           isSuperAdmin={isSuperAdmin}
         />
       ) : (
-        <div className="glass-card p-6 text-slate-400 text-sm">
-          Solo administradores pueden modificar la configuración de la empresa.
-        </div>
+        !canEdit && (
+          <div className="glass-card p-6 text-slate-400 text-sm">
+            Solo administradores pueden modificar la identidad de la empresa.
+          </div>
+        )
+      )}
+
+      {/* Cambio de contraseña (todos los usuarios) */}
+      {profile && (
+        <PasswordChangeSection
+          role={profile.role}
+          userId={user.id}
+        />
       )}
     </div>
   )

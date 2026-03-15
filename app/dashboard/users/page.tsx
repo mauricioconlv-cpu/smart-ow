@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import Link from 'next/link'
 import { Plus, Shield, MapPin, Truck, User, Phone, DollarSign } from 'lucide-react'
 import UserRowActions from './components/UserRowActions'
+import PasswordRequestsPanel from './components/PasswordRequestsPanel'
 
 export default async function UsersPage() {
   const supabase = await createClient()
@@ -69,10 +70,13 @@ export default async function UsersPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center pb-4 border-b border-gray-200">
+      {/* Solicitudes de cambio de contraseña (solo visible para admin) */}
+      {canInvite && <PasswordRequestsPanel />}
+
+      <div className="flex justify-between items-center pb-4 border-b border-white/10">
         <div>
-          <h2 className="text-2xl font-bold text-gray-900">Gestión de Accesos</h2>
-          <p className="mt-1 text-sm text-gray-500">
+          <h2 className="text-2xl font-bold text-white">Gestión de Accesos</h2>
+          <p className="mt-1 text-sm text-slate-400">
             {currentProfile?.role === 'superadmin'
               ? 'Panel maestro. Administra a los dueños de franquicias/empresas y permisos.'
               : 'Administra a tus operadores y personal de la central de despacho.'}
