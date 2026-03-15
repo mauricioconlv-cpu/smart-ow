@@ -1,39 +1,70 @@
 -- ============================================================
--- EJECUTAR EN SUPABASE SQL EDITOR
--- Crea funciones RPC para update/insert de grúas
--- Esto bypasea el schema cache de PostgREST completamente
+-- EJECUTAR EN SUPABASE SQL EDITOR  
+-- Función universal para actualizar/insertar grúas
+-- Recibe datos en JSONB para evitar el schema cache
 -- ============================================================
 
--- FUNCIÓN 1: Insertar nueva grúa
-CREATE OR REPLACE FUNCTION public.rpc_insert_tow_truck(
-  p_company_id      uuid,
-  p_brand           text,
-  p_model           text,
-  p_serial_number   text,
-  p_economic_number text,
-  p_plates          text,
-  p_unit_type       text,
-  p_tools           text[],
-  p_current_lat     numeric DEFAULT 19.4326,
-  p_current_lng     numeric DEFAULT -99.1332
-)
+CREATE OR REPLACE FUNCTION public.upsert_tow_truck(payload jsonb)
 RETURNS jsonb
 LANGUAGE plpgsql
 SECURITY DEFINER
 AS $$
 DECLARE
-  v_result jsonb;
+  v_id          uuid;
+  v_company_id  uuid;
+  v_unit_type   text;
+  v_tools       text[];
+  v_is_active   boolean;
 BEGIN
-  INSERT INTO public.tow_trucks (
-    company_id, brand, model, serial_number,
-    economic_number, plates, unit_type, tools,
-    current_lat, current_lng, is_active
-  ) VALUES (
-    p_company_id, p_brand, p_model, p_serial_number,
-    p_economic_number, p_plates, p_unit_type, p_tools,
-    p_current_lat, p_current_lng, true
-  );
+  v_id          := (payload->>'id')::uuid;
+  v_company_id  := (payload->>'company_id')::uuid;
+  v_unit_type   := payload->>'unit_type';
+  v_is_active   := COALESCE((payload->>'is_active')::boolean, true);
+  
+  -- Convertir tools de JSON array a text[]
+  SELECT array_agg(t.value::text)
+  INTO v_tools
+  FROM jsonb_array_elements_text(COALESCE(payload->'tools', '[]'::jsonb)) AS t(value);
+
+  IF v_id IS NULL THEN
+    -- INSERT nueva grúa
+    INSERT INTO public.tow_trucks (
+      company_id, brand, model, serial_number,
+      economic_number, plates, unit_type, tools,
+      current_lat, current_lng, is_active
+    ) VALUES (
+      v_company_id,
+      payload->>'brand',
+      payload->>'model',
+      COALESCE(payload->>'serial_number', ''),
+      payload->>'economic_number',
+      payload->>'plates',
+      v_unit_type,
+      COALESCE(v_tools, ARRAY[]::text[]),
+      COALESCE((payload->>'current_lat')::numeric, 19.4326),
+      COALESCE((payload->>'current_lng')::numeric, -99.1332),
+      v_is_active
+    );
+  ELSE
+    -- UPDATE grúa existente
+    UPDATE public.tow_trucks SET
+      brand           = payload->>'brand',
+      model           = payload->>'model',
+      serial_number   = COALESCE(payload->>'serial_number', ''),
+      economic_number = payload->>'economic_number',
+      plates          = payload->>'plates',
+      unit_type       = v_unit_type,
+      tools           = COALESCE(v_tools, ARRAY[]::text[]),
+      is_active       = v_is_active
+    WHERE id = v_id;
+
+    IF NOT FOUND THEN
+      RETURN jsonb_build_object('error', 'Grúa no encontrada o sin permisos.');
+    END IF;
+  END IF;
+
   RETURN jsonb_build_object('success', true);
+
 EXCEPTION
   WHEN unique_violation THEN
     RETURN jsonb_build_object('error', 'Ya existe una grúa con ese número económico o placas.');
@@ -42,48 +73,7 @@ EXCEPTION
 END;
 $$;
 
--- FUNCIÓN 2: Actualizar grúa existente
-CREATE OR REPLACE FUNCTION public.rpc_update_tow_truck(
-  p_id              uuid,
-  p_brand           text,
-  p_model           text,
-  p_serial_number   text,
-  p_economic_number text,
-  p_plates          text,
-  p_unit_type       text,
-  p_tools           text[],
-  p_is_active       boolean
-)
-RETURNS jsonb
-LANGUAGE plpgsql
-SECURITY DEFINER
-AS $$
-BEGIN
-  UPDATE public.tow_trucks SET
-    brand           = p_brand,
-    model           = p_model,
-    serial_number   = p_serial_number,
-    economic_number = p_economic_number,
-    plates          = p_plates,
-    unit_type       = p_unit_type,
-    tools           = p_tools,
-    is_active       = p_is_active
-  WHERE id = p_id;
+GRANT EXECUTE ON FUNCTION public.upsert_tow_truck(jsonb) TO authenticated;
 
-  IF NOT FOUND THEN
-    RETURN jsonb_build_object('error', 'Grúa no encontrada o sin permisos.');
-  END IF;
-
-  RETURN jsonb_build_object('success', true);
-EXCEPTION
-  WHEN OTHERS THEN
-    RETURN jsonb_build_object('error', SQLERRM);
-END;
-$$;
-
--- Dar permisos de ejecución a usuarios autenticados
-GRANT EXECUTE ON FUNCTION public.rpc_insert_tow_truck TO authenticated;
-GRANT EXECUTE ON FUNCTION public.rpc_update_tow_truck TO authenticated;
-
--- Recargar schema para que las nuevas funciones sean visibles
+-- Recargar schema
 NOTIFY pgrst, 'reload schema';
