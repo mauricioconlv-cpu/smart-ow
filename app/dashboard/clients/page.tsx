@@ -65,6 +65,7 @@ export default async function ClientsPage() {
               </tr>
             ) : (
               clients?.map((client) => {
+                const generalRule = client.pricing_rules.find((r: any) => r.tipo === 'general')
                 const localRule = client.pricing_rules.find((r: any) => r.tipo === 'local')
                 const foraneaRule = client.pricing_rules.find((r: any) => r.tipo === 'foraneo')
 
@@ -74,12 +75,16 @@ export default async function ClientsPage() {
                       {client.name}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {localRule ? `$${localRule.costo_base} MXN Fijos` : 'No configurada'}
+                      {generalRule
+                        ? <span className="text-blue-600 font-medium text-xs">Costos por tipo A/B/C/D</span>
+                        : localRule ? `$${localRule.costo_base} MXN Fijos` : 'No configurada'}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {foraneaRule 
-                        ? `$${foraneaRule.costo_base} Band. + $${foraneaRule.costo_km}/Km` 
-                        : 'No configurada'}
+                      {generalRule
+                        ? <span className="text-blue-600 font-medium text-xs">Banderazo por tipo configurado</span>
+                        : foraneaRule 
+                          ? `$${foraneaRule.costo_base} Band. + $${foraneaRule.costo_km}/Km` 
+                          : 'No configurada'}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                       <ClientActions clientId={client.id} clientName={client.name} />

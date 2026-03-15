@@ -20,6 +20,72 @@ function CurrencyInput({ name, label, defaultValue = 0 }: { name: string; label:
   )
 }
 
+// ─── Server Action (fuera del componente para evitar problemas con closures) ──
+async function updateClientAction(formData: FormData) {
+  'use server'
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return
+
+  // Leer el ID del cliente desde el campo oculto del formulario
+  const clientId = formData.get('clientId') as string
+  if (!clientId) return
+
+  const clientName = formData.get('name') as string
+
+  // Costos por tipo de grúa (local, banderazo, km)
+  const tipoFields = ['a', 'b', 'c', 'd']
+  const tipoCosts: Record<string, number> = {}
+  for (const t of tipoFields) {
+    tipoCosts[`costo_local_tipo_${t}`] = parseFloat(formData.get(`costo_local_tipo_${t}`) as string) || 0
+    tipoCosts[`costo_bande_tipo_${t}`] = parseFloat(formData.get(`costo_bande_tipo_${t}`) as string) || 0
+    tipoCosts[`costo_km_tipo_${t}`]    = parseFloat(formData.get(`costo_km_tipo_${t}`) as string) || 0
+  }
+
+  // Costos adicionales genéricos
+  const extraFields = [
+    'costo_maniobra', 'costo_hora_espera', 'costo_abanderamiento', 'costo_resguardo',
+    'costo_dollys', 'costo_patines', 'costo_go_jacks',
+    'costo_rescate_subterraneo', 'costo_adaptacion',
+    'costo_blindaje_1', 'costo_blindaje_2', 'costo_blindaje_3', 'costo_blindaje_4',
+    'costo_blindaje_5', 'costo_blindaje_6', 'costo_blindaje_7',
+    'costo_kg_carga'
+  ]
+  const extras: Record<string, number> = {}
+  for (const field of extraFields) {
+    extras[field] = parseFloat(formData.get(field) as string) || 0
+  }
+
+  const allCosts = { ...tipoCosts, ...extras }
+
+  // 1. Actualizar nombre del cliente
+  await supabase.from('clients').update({ name: clientName }).eq('id', clientId)
+
+  // 2. Verificar si existen reglas de pricing para este cliente
+  const { data: existingRules } = await supabase
+    .from('pricing_rules')
+    .select('id')
+    .eq('client_id', clientId)
+
+  if (existingRules && existingRules.length > 0) {
+    // Actualizar la primera regla encontrada (o todas)
+    await supabase.from('pricing_rules').update(allCosts).eq('client_id', clientId)
+  } else {
+    // Crear una nueva regla si no existe ninguna
+    const { data: profile } = await supabase.from('profiles').select('company_id').eq('id', user.id).single()
+    await supabase.from('pricing_rules').insert({
+      client_id: clientId,
+      company_id: profile?.company_id,
+      tipo: 'general',
+      costo_base: 0,
+      costo_km: 0,
+      ...allCosts
+    })
+  }
+
+  redirect('/dashboard/clients')
+}
+
 export default async function EditClientPage({ params }: { params: { id: string } }) {
   const supabase = await createClient()
 
@@ -31,65 +97,8 @@ export default async function EditClientPage({ params }: { params: { id: string 
 
   if (!client) return notFound()
 
-  // Tomamos la regla "local" como base para los costos compartidos
+  // Tomamos la primera regla disponible para pre-cargar valores
   const rule = (client.pricing_rules as any[])?.[0] ?? {}
-
-  async function updateClientAction(formData: FormData) {
-    'use server'
-    const supabase = await createClient()
-
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return
-
-    const clientName = formData.get('name') as string
-
-    // Costos por tipo de grúa (local, banderazo, km)
-    const tipoFields = ['a', 'b', 'c', 'd']
-    const tipoCosts: Record<string, number> = {}
-    for (const t of tipoFields) {
-      tipoCosts[`costo_local_tipo_${t}`] = parseFloat(formData.get(`costo_local_tipo_${t}`) as string) || 0
-      tipoCosts[`costo_bande_tipo_${t}`] = parseFloat(formData.get(`costo_bande_tipo_${t}`) as string) || 0
-      tipoCosts[`costo_km_tipo_${t}`]    = parseFloat(formData.get(`costo_km_tipo_${t}`) as string) || 0
-    }
-
-    // Costos adicionales genéricos
-    const extraFields = [
-      'costo_maniobra', 'costo_hora_espera', 'costo_abanderamiento', 'costo_resguardo',
-      'costo_dollys', 'costo_patines', 'costo_go_jacks',
-      'costo_rescate_subterraneo', 'costo_adaptacion',
-      'costo_blindaje_1', 'costo_blindaje_2', 'costo_blindaje_3', 'costo_blindaje_4',
-      'costo_blindaje_5', 'costo_blindaje_6', 'costo_blindaje_7',
-      'costo_kg_carga'
-    ]
-    const extras: Record<string, number> = {}
-    for (const field of extraFields) {
-      extras[field] = parseFloat(formData.get(field) as string) || 0
-    }
-
-    // 1. Actualizar nombre
-    await supabase.from('clients').update({ name: clientName }).eq('id', params.id)
-
-    // 2. Si existen reglas, actualizarlas. Si no, insertarlas.
-    const rules = await supabase.from('pricing_rules').select('id').eq('client_id', params.id)
-    const allCosts = { ...tipoCosts, ...extras }
-
-    if (rules.data && rules.data.length > 0) {
-      await supabase.from('pricing_rules').update(allCosts).eq('client_id', params.id)
-    } else {
-      const { data: { user: u } } = await supabase.auth.getUser()
-      const { data: profile } = await supabase.from('profiles').select('company_id').eq('id', u!.id).single()
-      await supabase.from('pricing_rules').insert({
-        client_id: params.id,
-        company_id: profile?.company_id,
-        tipo: 'local',
-        costo_base: 0,
-        costo_km: 0,
-        ...allCosts
-      })
-    }
-
-    redirect('/dashboard/clients')
-  }
 
   return (
     <div className="max-w-4xl mx-auto space-y-6">
@@ -104,6 +113,9 @@ export default async function EditClientPage({ params }: { params: { id: string 
       </div>
 
       <form action={updateClientAction} className="space-y-8">
+        {/* ID oculto para evitar el problema de closure en server actions */}
+        <input type="hidden" name="clientId" value={client.id} />
+
         {/* Nombre */}
         <div className="bg-white shadow rounded-lg p-6">
           <h3 className="text-lg font-semibold text-gray-900 mb-4">Información General</h3>
@@ -121,32 +133,34 @@ export default async function EditClientPage({ params }: { params: { id: string 
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-slate-200">
-                  <th className="text-left py-2 pr-4 text-xs font-bold text-slate-500 uppercase w-24">Tipo</th>
-                  <th className="text-left py-2 pr-4 text-xs font-bold text-slate-500 uppercase">Costo Local (fijo)</th>
-                  <th className="text-left py-2 pr-4 text-xs font-bold text-slate-500 uppercase">Banderazo Foráneo</th>
-                  <th className="text-left py-2 text-xs font-bold text-slate-500 uppercase">Costo / Km</th>
+                <tr className="border-b-2 border-slate-200">
+                  <th className="text-left pb-3 pr-6 text-xs font-bold text-slate-500 uppercase w-28">Tipo Grúa</th>
+                  <th className="text-left pb-3 pr-4 text-xs font-bold text-slate-500 uppercase">Costo Local (fijo)</th>
+                  <th className="text-left pb-3 pr-4 text-xs font-bold text-slate-500 uppercase">Banderazo Foráneo</th>
+                  <th className="text-left pb-3 text-xs font-bold text-slate-500 uppercase">Costo / Km</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {[
-                  { key: 'a', label: 'Tipo A', desc: '< 3.5 ton' },
-                  { key: 'b', label: 'Tipo B', desc: '3.5 – 7.5 ton' },
-                  { key: 'c', label: 'Tipo C', desc: '7.5 – 11 ton' },
-                  { key: 'd', label: 'Tipo D', desc: '> 11 ton' },
-                ].map(({ key, label, desc }) => (
-                  <tr key={key} className="py-3">
-                    <td className="py-3 pr-4">
-                      <span className="font-black text-blue-700 text-lg">{key.toUpperCase()}</span>
-                      <span className="block text-xs text-slate-400">{desc}</span>
+                  { key: 'a', label: 'Tipo A', desc: '< 3.5 ton', color: 'text-green-700 bg-green-100' },
+                  { key: 'b', label: 'Tipo B', desc: '3.5 – 7.5 ton', color: 'text-blue-700 bg-blue-100' },
+                  { key: 'c', label: 'Tipo C', desc: '7.5 – 11 ton', color: 'text-orange-700 bg-orange-100' },
+                  { key: 'd', label: 'Tipo D', desc: '> 11 ton', color: 'text-red-700 bg-red-100' },
+                ].map(({ key, label, desc, color }) => (
+                  <tr key={key}>
+                    <td className="py-4 pr-6">
+                      <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg font-black text-sm ${color}`}>
+                        {key.toUpperCase()}
+                      </span>
+                      <span className="block text-xs text-slate-400 mt-1 pl-1">{desc}</span>
                     </td>
-                    <td className="py-3 pr-4">
+                    <td className="py-4 pr-4">
                       <CurrencyInput name={`costo_local_tipo_${key}`} label="" defaultValue={rule[`costo_local_tipo_${key}`] ?? 0} />
                     </td>
-                    <td className="py-3 pr-4">
+                    <td className="py-4 pr-4">
                       <CurrencyInput name={`costo_bande_tipo_${key}`} label="" defaultValue={rule[`costo_bande_tipo_${key}`] ?? 0} />
                     </td>
-                    <td className="py-3">
+                    <td className="py-4">
                       <CurrencyInput name={`costo_km_tipo_${key}`} label="" defaultValue={rule[`costo_km_tipo_${key}`] ?? 0} />
                     </td>
                   </tr>

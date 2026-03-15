@@ -43,7 +43,14 @@ export async function addTowTruck(prevState: any, formData: FormData) {
 
   if (error) {
     console.error('Error adding tow truck:', error)
-    return { error: 'Error al registrar la grúa. Verifica que el número económico no exista.' }
+    // Si el error es de schema cache, dar instrucción clara al usuario
+    if (error.message?.includes('schema cache') || error.message?.includes('column')) {
+      return { error: `Error de base de datos: ${error.message}. Ve a Supabase → SQL Editor y ejecuta: NOTIFY pgrst, 'reload schema';` }
+    }
+    if (error.code === '23505') {
+      return { error: 'Ya existe una grúa con ese número económico o placas. Usa uno diferente.' }
+    }
+    return { error: `Error al registrar: ${error.message}` }
   }
 
   revalidatePath('/dashboard/fleet')
