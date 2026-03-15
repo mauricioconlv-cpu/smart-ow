@@ -1,12 +1,15 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useTransition } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { createBrowserClient } from '@supabase/ssr'
 import {
   User, Phone, FileText, Car, Wrench, MapPin, Package,
-  Loader2, ArrowLeft, Save, X, Upload, XCircle, Lock, Unlock
+  Loader2, ArrowLeft, Save, X, Upload, XCircle, Lock, Unlock,
+  Clock, AlertTriangle, CheckCircle2, BookOpen
 } from 'lucide-react'
+import { unlockWithReason, closeService } from './actions'
+import ServiceLog from '../components/ServiceLog'
 
 const supabase = createBrowserClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -152,6 +155,17 @@ export default function ServiceCapturePage() {
   const [isGeoLoading, setIsGeoLoading] = useState(false)
   const [isEditing, setIsEditing] = useState(false)
   const [hasData, setHasData] = useState(false)
+
+  // Modal de desbloqueo
+  const [showUnlockModal, setShowUnlockModal] = useState(false)
+  const [unlockReason, setUnlockReason] = useState('')
+  const [isUnlocking, startUnlock] = useTransition()
+  const [isClosing, startClose] = useTransition()
+
+  // Countdown para cotización (20 min)
+  const [countdown, setCountdown] = useState<number | null>(null)
+  const [cotVencida, setCotVencida] = useState(false)
+  const notifiedRef = useRef(false)
 
   // Photos state
   const [contactPhotos,  setContactPhotos]  = useState<File[]>([])
@@ -301,7 +315,15 @@ export default function ServiceCapturePage() {
         }
       }
 
-      // Auto-geocode destino solo si no hay datos guardados
+      // Si el status es cotizacion, iniciar countdown
+      if (data.status === 'cotizacion' && data.updated_at) {
+        const updatedMs = new Date(data.updated_at).getTime()
+        const LIMIT = 20 * 60 * 1000 // 20 min
+        const elapsed = Date.now() - updatedMs
+        const remaining = LIMIT - elapsed
+        setCountdown(remaining > 0 ? remaining : 0)
+        if (remaining <= 0) setCotVencida(true)
+      }
       if (!data.dest_state) {
         const dc = data.destino_coords
         if (dc?.lat && dc?.lng) {
@@ -317,6 +339,33 @@ export default function ServiceCapturePage() {
     }
     load()
   }, [id])
+
+  // Countdown timer
+  useEffect(() => {
+    if (countdown === null) return
+    if (countdown <= 0) {
+      setCotVencida(true)
+      if (!notifiedRef.current && typeof window !== 'undefined' && 'Notification' in window) {
+        notifiedRef.current = true
+        if (Notification.permission === 'granted') {
+          new Notification(`⏰ Cotización vencida — Folio #${service?.folio}`, {
+            body: 'El tiempo de la cotización expiró. Cierra el expediente. '
+          })
+        } else if (Notification.permission !== 'denied') {
+          Notification.requestPermission()
+        }
+      }
+      return
+    }
+    const t = setTimeout(() => setCountdown(c => (c ?? 0) - 1000), 1000)
+    return () => clearTimeout(t)
+  }, [countdown, service?.folio])
+
+  const fmtCountdown = (ms: number) => {
+    const m = Math.floor(ms / 60000)
+    const s = Math.floor((ms % 60000) / 1000)
+    return `${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`
+  }
 
   // ── Upload fotos ────────────────────────────────────────────
   async function uploadSet(files: File[], folder: string) {
@@ -334,7 +383,7 @@ export default function ServiceCapturePage() {
   }
 
   // ── Guardar ─────────────────────────────────────────────────
-  async function handleSave(newStatus: 'asignando'|'cotizacion'|'cancelado_cliente') {
+  async function handleSave(newStatus: 'asignando'|'cotizacion'|'cancelado_momento') {
     setIsSaving(true)
     setSaveErr('')
     try {
@@ -400,6 +449,44 @@ export default function ServiceCapturePage() {
     }
   }
 
+  // Opciones de motivo de desbloqueo según status
+  const EARLY_STATUSES = ['creado','en_captura','sin_operador','cotizacion','asignando']
+  const isEarlyStatus = service && EARLY_STATUSES.includes(service.status)
+  const unlockOptions = isEarlyStatus
+    ? [
+        'Usuario cambia de ubicación',
+        'Cabina seguro/asistencia dio ubicación incorrecta',
+        'Usuario corrige número de teléfono',
+        'Usuario corrige número de placas',
+        'Usuario cambia lugar de destino',
+      ]
+    : [
+        'Usuario cambia de destino',
+        'Usuario no estaba en la ubicación proporcionada',
+        'Condiciones del vehículo diferentes (requiere maniobra)',
+      ]
+
+  function handleUnlockClick() {
+    setUnlockReason('')
+    setShowUnlockModal(true)
+  }
+
+  function handleConfirmUnlock() {
+    if (!unlockReason) return
+    startUnlock(async () => {
+      await unlockWithReason(id, unlockReason)
+      setShowUnlockModal(false)
+      setIsEditing(true)
+    })
+  }
+
+  function handleCloseService(note?: string) {
+    startClose(async () => {
+      const res = await closeService(id, note)
+      if (!res.error) router.push('/dashboard')
+    })
+  }
+
   if (!service) return (
     <div className="flex items-center justify-center py-24">
       <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
@@ -434,19 +521,77 @@ export default function ServiceCapturePage() {
         )}
       </div>
 
-      {/* Banner de solo lectura */}
-      {ro && hasData && (
+      {/* Banner solo lectura */}
+      {ro && hasData && service.status !== 'cancelado_momento' && service.status !== 'cotizacion' && (
         <div className="flex items-center gap-3 bg-slate-50 border border-slate-200 rounded-xl p-4">
           <Lock className="w-5 h-5 text-slate-500 shrink-0" />
-          <p className="text-sm text-slate-600 flex-1">
-            Este servicio ya tiene información guardada. Estás en modo de <strong>solo lectura</strong>.
-          </p>
+          <div className="flex-1">
+            <p className="text-sm text-slate-600">
+              Este servicio ya tiene información guardada. Estás en modo de <strong>solo lectura</strong>.
+            </p>
+            {service.edit_reason && (
+              <p className="text-xs text-amber-700 mt-1 font-medium">Último desbloqueo: {service.edit_reason}</p>
+            )}
+          </div>
           <button
-            onClick={() => setIsEditing(true)}
+            onClick={handleUnlockClick}
             className="flex items-center gap-1.5 px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white font-semibold text-sm rounded-lg transition-colors shrink-0"
           >
             <Unlock className="w-4 h-4" />
             Desbloquear Edición
+          </button>
+        </div>
+      )}
+
+      {/* Banner: Cancelado al Momento */}
+      {service.status === 'cancelado_momento' && (
+        <div className="flex items-center gap-3 bg-red-50 border border-red-200 rounded-xl p-4">
+          <XCircle className="w-5 h-5 text-red-600 shrink-0" />
+          <div className="flex-1">
+            <p className="text-sm font-bold text-red-700">Cancelado al Momento</p>
+            <p className="text-xs text-red-500">Revisa la información y cierra el expediente para enviarlo al histórico.</p>
+          </div>
+          <button
+            onClick={() => handleCloseService('Expediente cerrado tras cancelación al momento')}
+            disabled={isClosing}
+            className="flex items-center gap-1.5 px-4 py-2.5 bg-red-600 hover:bg-red-700 text-white font-bold text-sm rounded-lg transition disabled:opacity-50 shrink-0"
+          >
+            {isClosing ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
+            Cerrar Expediente
+          </button>
+        </div>
+      )}
+
+      {/* Banner: Cotización con countdown */}
+      {service.status === 'cotizacion' && (
+        <div className={`flex items-center gap-3 rounded-xl p-4 border ${
+          cotVencida ? 'bg-red-50 border-red-300' : 'bg-amber-50 border-amber-300'
+        }`}>
+          <Clock className={`w-5 h-5 shrink-0 ${cotVencida ? 'text-red-600' : 'text-amber-600'}`} />
+          <div className="flex-1">
+            {cotVencida ? (
+              <>
+                <p className="text-sm font-bold text-red-700">Cotización Vencida</p>
+                <p className="text-xs text-red-500">El tiempo de 20 minutos expiró. Cierra el expediente.</p>
+              </>
+            ) : (
+              <>
+                <p className="text-sm font-bold text-amber-700">Solo Cotización — expira en</p>
+                <p className="text-3xl font-black font-mono text-amber-700 mt-0.5">
+                  {countdown !== null ? fmtCountdown(countdown) : '--:--'}
+                </p>
+              </>
+            )}
+          </div>
+          <button
+            onClick={() => handleCloseService('Expediente cerrado: solo cotización')}
+            disabled={isClosing}
+            className={`flex items-center gap-1.5 px-4 py-2.5 text-white font-bold text-sm rounded-lg transition disabled:opacity-50 shrink-0 ${
+              cotVencida ? 'bg-red-600 hover:bg-red-700' : 'bg-amber-500 hover:bg-amber-600'
+            }`}
+          >
+            {isClosing ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
+            Cerrar Expediente
           </button>
         </div>
       )}
@@ -806,7 +951,7 @@ export default function ServiceCapturePage() {
                 <ArrowLeft className="w-4 h-4" /> Volver
               </button>
               <div className="flex-1" />
-              <button onClick={() => setIsEditing(true)}
+              <button onClick={() => handleUnlockClick()}
                 className="w-full sm:w-auto px-8 py-3 bg-amber-500 hover:bg-amber-600 text-white font-bold text-sm rounded-xl shadow-md transition flex items-center justify-center gap-2">
                 <Unlock className="w-4 h-4" />
                 Desbloquear y Editar
@@ -820,7 +965,7 @@ export default function ServiceCapturePage() {
                   <Lock className="w-4 h-4" /> Cancelar
                 </button>
               )}
-              <button onClick={() => handleSave('cancelado_cliente')} disabled={isSaving}
+              <button onClick={() => handleSave('cancelado_momento')} disabled={isSaving}
                 className="w-full sm:w-auto px-5 py-2.5 border-2 border-red-300 text-red-600 font-semibold text-sm rounded-xl hover:bg-red-50 transition disabled:opacity-40 flex items-center justify-center gap-2">
                 <XCircle className="w-4 h-4" /> Cancelado al Momento
               </button>
@@ -839,6 +984,61 @@ export default function ServiceCapturePage() {
         </div>
       </div>
 
+      {/* ── Bitácora del Expediente ─────────────────────────── */}
+      {hasData && (
+        <div className="max-w-4xl mx-auto mt-2 mb-28">
+          <ServiceLog serviceId={id} canAddNotes={true} />
+        </div>
+      )}
+
+      {/* ── Modal de desbloqueo ───────────────────────────────── */}
+      {showUnlockModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
+            <div className="flex items-center gap-2 p-5 border-b border-slate-200">
+              <Unlock className="w-5 h-5 text-amber-500" />
+              <h2 className="font-bold text-slate-800">Motivo del Desbloqueo</h2>
+              <button onClick={() => setShowUnlockModal(false)} className="ml-auto text-slate-400 hover:text-slate-600">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-5 space-y-2">
+              <p className="text-sm text-slate-500 mb-3">Selecciona el motivo por el que se requiere modificar el expediente:</p>
+              {unlockOptions.map(opt => (
+                <label key={opt} className={`flex items-center gap-3 p-3 rounded-xl border-2 cursor-pointer transition ${
+                  unlockReason === opt ? 'border-amber-400 bg-amber-50' : 'border-slate-200 hover:border-slate-300'
+                }`}>
+                  <input
+                    type="radio"
+                    name="unlock_reason"
+                    value={opt}
+                    checked={unlockReason === opt}
+                    onChange={() => setUnlockReason(opt)}
+                    className="accent-amber-500"
+                  />
+                  <span className="text-sm text-slate-700 font-medium">{opt}</span>
+                </label>
+              ))}
+            </div>
+
+            <div className="flex gap-3 p-5 border-t border-slate-100">
+              <button onClick={() => setShowUnlockModal(false)}
+                className="flex-1 py-2.5 border border-slate-300 text-slate-600 font-semibold text-sm rounded-xl hover:bg-slate-50 transition">
+                Cancelar
+              </button>
+              <button
+                onClick={handleConfirmUnlock}
+                disabled={!unlockReason || isUnlocking}
+                className="flex-1 py-2.5 bg-amber-500 hover:bg-amber-600 text-white font-bold text-sm rounded-xl transition disabled:opacity-40 flex items-center justify-center gap-2"
+              >
+                {isUnlocking ? <Loader2 className="w-4 h-4 animate-spin" /> : <Unlock className="w-4 h-4" />}
+                Confirmar y Desbloquear
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
