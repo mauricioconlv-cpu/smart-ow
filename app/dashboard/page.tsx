@@ -20,28 +20,27 @@ export default function LiveMonitorPage() {
 
   useEffect(() => {
     const fetchPersonnel = async () => {
-      // Operadores
+      // Operadores — no filtramos por updated_at (no existe), mostramos todos los que tengan role='operator'
       const { data: ops, error: opsError } = await supabase
         .from('profiles')
-        .select('id, full_name, grua_asignada, updated_at')
+        .select('id, full_name, grua_asignada, created_at')
         .eq('role', 'operator')
       if (opsError) setDbError(`Error ops: ${opsError.message}`)
       if (ops) setOperators(ops)
 
-      // Grúas con ubicación reciente (activas en calle = tienen coords dentro de las últimas 2h)
+      // Grúas activas en calle = tienen last_location_update en las últimas 2h
       const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString()
       const { data: tw, error: twError } = await supabase
         .from('tow_trucks')
-        .select('id, economic_number, current_location, last_location_update, profiles(full_name)')
+        .select('id, economic_number, last_location_update, profiles(full_name)')
         .gt('last_location_update', twoHoursAgo)
-        .not('current_location', 'is', null)
       if (twError) setDbError(prev => prev ? `${prev} | Error trucks: ${twError.message}` : `Error trucks: ${twError.message}`)
       if (tw) setTrucks(tw)
 
       // Despachadores
       const { data: disp } = await supabase
         .from('profiles')
-        .select('id, full_name, updated_at')
+        .select('id, full_name, created_at')
         .eq('role', 'dispatcher')
       if (disp) setDispatchers(disp)
     }
@@ -51,13 +50,9 @@ export default function LiveMonitorPage() {
     return () => clearInterval(interval)
   }, [])
 
-  // Considera "activo" si actualizó en los últimos 15 min
-  const isOnline = (updatedAt: string) => {
-    return Date.now() - new Date(updatedAt).getTime() < 15 * 60 * 1000
-  }
-
-  const onlineOps  = operators.filter(o => isOnline(o.updated_at))
-  const offlineOps = operators.filter(o => !isOnline(o.updated_at))
+  // Operador activo = tiene grua_asignada (fue vinculado hoy)
+  const onlineOps  = operators.filter(o => !!o.grua_asignada)
+  const offlineOps = operators.filter(o => !o.grua_asignada)
 
   return (
     <div className="flex flex-col h-[calc(100vh-6rem)] gap-4">
@@ -137,14 +132,14 @@ export default function LiveMonitorPage() {
           <div className="flex items-center gap-2 px-4 py-3 border-b border-slate-100 bg-slate-50 shrink-0">
             <Radio className="w-4 h-4 text-amber-500" />
             <span className="font-bold text-sm text-slate-700">Cabina / Despachadores</span>
-            <span className="ml-auto text-xs font-bold text-amber-600">{dispatchers.filter(d => isOnline(d.updated_at)).length} en línea</span>
+            <span className="ml-auto text-xs font-bold text-amber-600">{dispatchers.length} en línea</span>
           </div>
           <div className="flex-1 overflow-y-auto divide-y divide-slate-50 p-2 space-y-1">
             {dispatchers.length === 0 && (
               <p className="text-center text-slate-400 text-xs py-6">Sin despachadores registrados</p>
             )}
             {dispatchers.map(d => (
-              <PersonnelRow key={d.id} name={d.full_name} sub="Despachador / Call Center" online={isOnline(d.updated_at)} />
+              <PersonnelRow key={d.id} name={d.full_name} sub="Despachador / Call Center" online={true} />
             ))}
           </div>
         </div>
