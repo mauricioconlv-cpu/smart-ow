@@ -1,320 +1,165 @@
 'use client'
 
-import { useEffect, useState, useMemo } from 'react'
+import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import dynamic from 'next/dynamic'
-import { Clock, AlertTriangle, Truck, MapPin, Search, X } from 'lucide-react'
-import Link from 'next/link'
+import { MapPin, Truck, Radio, Users, Circle } from 'lucide-react'
 
-const LiveMap = dynamic(() => import('./components/Map'), { 
-  ssr: false, 
-  loading: () => <div className="h-full w-full bg-slate-100 animate-pulse rounded-xl flex items-center justify-center text-slate-400">Cargando Satélite...</div> 
+const LiveMap = dynamic(() => import('./components/Map'), {
+  ssr: false,
+  loading: () => <div className="h-full w-full bg-slate-100 animate-pulse rounded-xl flex items-center justify-center text-slate-400">Cargando Satélite...</div>
 })
 
-type TabType = 'abierto' | 'cotizacion' | 'cancelado_momento' | 'cancelado_posterior'
-
 export default function LiveMonitorPage() {
-  const [activeTab, setActiveTab] = useState<TabType>('abierto')
-  const [services, setServices] = useState<any[]>([])
   const [operators, setOperators] = useState<any[]>([])
-  const [currentTime, setCurrentTime] = useState(Date.now())
-  const [searchQuery, setSearchQuery] = useState('')
-  
+  const [trucks, setTrucks] = useState<any[]>([])
+  const [dispatchers, setDispatchers] = useState<any[]>([])
+
   const supabase = createClient()
 
   useEffect(() => {
-    const timer = setInterval(() => setCurrentTime(Date.now()), 5000)
-    return () => clearInterval(timer)
-  }, [])
+    const fetchPersonnel = async () => {
+      // Operadores
+      const { data: ops } = await supabase
+        .from('profiles')
+        .select('id, full_name, grua_asignada, updated_at')
+        .eq('role', 'operator')
+      if (ops) setOperators(ops)
 
-  useEffect(() => {
-    const fetchOperators = async () => {
-      const { data } = await supabase.from('profiles').select('*').in('role', ['operator', 'dispatcher'])
-      if (data) setOperators(data)
-    }
-    fetchOperators()
-  }, [])
+      // Grúas con ubicación reciente (activas en calle = tienen coords dentro de las últimas 2h)
+      const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString()
+      const { data: tw } = await supabase
+        .from('tow_trucks')
+        .select('id, unit_number, unit_type, current_location, updated_at, profiles(full_name)')
+        .gt('updated_at', twoHoursAgo)
+        .not('current_location', 'is', null)
+      if (tw) setTrucks(tw)
 
-  useEffect(() => {
-    const fetchServices = async () => {
-      const { data } = await supabase
-        .from('services')
-        .select('*, client:clients(name), operator:profiles(full_name, grua_asignada)')
-        .order('created_at', { ascending: false })
-      if (data) setServices(data)
-    }
-
-    fetchServices()
-
-    const channel = supabase.channel('service_updates')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'services' }, () => {
-        fetchServices()
-      })
-      .subscribe()
-
-    return () => { supabase.removeChannel(channel) }
-  }, [])
-
-  // Contadores por pestaña
-  const tabCounts = useMemo(() => ({
-    abierto: services.filter(s =>
-      !['creado','en_captura','sin_operador','cotizacion','asignando','cancelado_momento','cancelado_posterior','terminado','servicio_cerrado'].includes(s.status)
-    ).length,
-    cotizacion: services.filter(s =>
-      ['creado','en_captura','sin_operador','cotizacion','asignando'].includes(s.status)
-    ).length,
-    cancelado_momento: services.filter(s => s.status === 'cancelado_momento').length,
-    cancelado_posterior: services.filter(s => s.status === 'cancelado_posterior').length,
-  }), [services])
-
-  // Filtrado por búsqueda O por pestaña
-  const filteredServices = useMemo(() => {
-    const q = searchQuery.trim().toLowerCase()
-
-    // Si hay búsqueda activa, buscar en folio interno, número expediente Y folio aseguradora
-    if (q) {
-      return services.filter(s => {
-        const folioMatch       = String(s.folio).includes(q)
-        const expedienteMatch  = (s.numero_expediente  || '').toLowerCase().includes(q)
-        const insuranceMatch   = (s.insurance_folio    || '').toLowerCase().includes(q)
-        return folioMatch || expedienteMatch || insuranceMatch
-      })
+      // Despachadores
+      const { data: disp } = await supabase
+        .from('profiles')
+        .select('id, full_name, updated_at')
+        .eq('role', 'dispatcher')
+      if (disp) setDispatchers(disp)
     }
 
-    // Sin búsqueda: filtrar por pestaña normalmente
-    return services.filter(s => {
-      switch (activeTab) {
-        case 'abierto':
-          return !['creado','en_captura','sin_operador','cotizacion','asignando','cancelado_momento','cancelado_posterior','terminado','servicio_cerrado'].includes(s.status)
-        case 'cotizacion':
-          return ['creado','en_captura','sin_operador','cotizacion','asignando'].includes(s.status)
-        case 'cancelado_momento':
-          return s.status === 'cancelado_momento'
-        case 'cancelado_posterior':
-          return s.status === 'cancelado_posterior'
-        default: return true
-      }
-    })
-  }, [services, activeTab, searchQuery])
+    fetchPersonnel()
+    const interval = setInterval(fetchPersonnel, 30000)
+    return () => clearInterval(interval)
+  }, [])
 
-  const calculateSLA = (service: any) => {
-     let color = 'bg-slate-100'
-     let text = 'text-slate-600'
-     let warning = false
-     let message = 'Dentro de tiempo'
-     let barColor = 'bg-blue-500'
-     let progress = 0
-
-     if (!service.created_at) return { color, text, warning, message, progress, barColor }
-
-     const started = new Date(service.created_at).getTime()
-     const elapsedMins = (currentTime - started) / 60000
-
-     if (service.status === 'creado' || service.status === 'en_captura') {
-         progress = 5
-         if (elapsedMins > 3) {
-            color = 'bg-red-100'; text = 'text-red-700'; barColor = 'bg-red-600'
-            warning = true; message = 'Tiempo excedido en toma de datos (>3m)'
-            triggerPushAlert(service.folio, message)
-         } else {
-            color = 'bg-green-100'; text = 'text-green-700'; barColor = 'bg-green-500'
-         }
-     } else if (service.status === 'sin_operador') {
-         progress = 10
-         if (elapsedMins > 5) {
-            color = 'bg-red-100'; text = 'text-red-700'; barColor = 'bg-red-600'
-            warning = true; message = 'Expediente Sin Asignar (>5m excedido)'
-            triggerPushAlert(service.folio, message)
-         } else {
-            color = 'bg-orange-100'; text = 'text-orange-700'; barColor = 'bg-orange-400'
-            message = 'Esperando asignación'
-         }
-     } else if (service.status === 'rumbo_contacto') {
-         progress = 20
-         const limit = service.es_foraneo ? 150 : 60
-         if (elapsedMins > limit) {
-             warning = true; message = `Expediente Sin Contacto (>${limit}m excedido)`; barColor = 'bg-red-600'
-             color = 'bg-red-100'; text = 'text-red-700'
-         } else {
-             color = 'bg-sky-100'; text = 'text-sky-700'; barColor = 'bg-sky-400'
-             message = 'Operador en camino (Local <60m, Foráneo <150m)'
-         }
-     } else {
-         progress = 40
-         barColor = 'bg-purple-500'
-         message = `En tránsito (${service.status})`
-     }
-
-     return { color, text, warning, message, progress, barColor }
+  // Considera "activo" si actualizó en los últimos 15 min
+  const isOnline = (updatedAt: string) => {
+    return Date.now() - new Date(updatedAt).getTime() < 15 * 60 * 1000
   }
 
-  const [notifiedFolios, setNotifiedFolios] = useState(new Set<number>())
-
-  const triggerPushAlert = (folio: number, msg: string) => {
-      if (notifiedFolios.has(folio)) return
-      if (typeof window !== "undefined" && "Notification" in window) {
-         if (Notification.permission === "granted") {
-            new Notification(`🔥 Alerta SLA Folio #${folio}`, { body: msg })
-            setNotifiedFolios(prev => new Set(prev).add(folio))
-         } else if (Notification.permission !== "denied") {
-            Notification.requestPermission()
-         }
-      }
-  }
+  const onlineOps  = operators.filter(o => isOnline(o.updated_at))
+  const offlineOps = operators.filter(o => !isOnline(o.updated_at))
 
   return (
     <div className="flex flex-col h-[calc(100vh-6rem)] gap-4">
-      {/* Mapa en Vivo */}
+
+      {/* ── Mapa en Vivo ── */}
       <section className="basis-1/2 min-h-0 bg-white shadow-sm border border-slate-200 rounded-xl p-3 flex flex-col relative z-0">
         <div className="flex justify-between items-center mb-2 z-10 px-2">
-            <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
-                <MapPin className="text-blue-500 w-5 h-5" /> Ubicación Dinámica
-            </h2>
-            <div className="flex items-center gap-2">
-                <span className="flex h-3 w-3">
-                  <span className="animate-ping absolute inline-flex h-3 w-3 rounded-full bg-green-400 opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-3 w-3 bg-green-500"></span>
-                </span>
-                <span className="text-xs text-slate-500 font-medium tracking-wide">RASTREO ACTIVO</span>
-            </div>
+          <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+            <MapPin className="text-blue-500 w-5 h-5" /> Ubicación Dinámica
+          </h2>
+          <div className="flex items-center gap-2">
+            <span className="flex h-3 w-3">
+              <span className="animate-ping absolute inline-flex h-3 w-3 rounded-full bg-green-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-3 w-3 bg-green-500"></span>
+            </span>
+            <span className="text-xs text-slate-500 font-medium tracking-wide">RASTREO ACTIVO</span>
+          </div>
         </div>
         <div className="flex-1 relative z-0">
           <LiveMap operators={operators} />
         </div>
       </section>
 
-      {/* Tablero SLA */}
-      <section className="basis-1/2 min-h-0 flex flex-col bg-white border border-slate-200 shadow-sm rounded-xl overflow-hidden pb-4">
-        
-        {/* Barra superior: Tabs + Buscador */}
-        <div className="flex items-center border-b border-slate-200 bg-slate-50 overflow-x-auto gap-0">
-          <TabButton active={activeTab==='abierto'} count={tabCounts.abierto} onClick={()=>{setActiveTab('abierto'); setSearchQuery('')}}>Servicios Abiertos</TabButton>
-          <TabButton active={activeTab==='cotizacion'} count={tabCounts.cotizacion} onClick={()=>{setActiveTab('cotizacion'); setSearchQuery('')}}>Exp. en Cotización</TabButton>
-          <TabButton active={activeTab==='cancelado_momento'} count={tabCounts.cancelado_momento} onClick={()=>{setActiveTab('cancelado_momento'); setSearchQuery('')}}>Cancelados Inmediatos</TabButton>
-          <TabButton active={activeTab==='cancelado_posterior'} count={tabCounts.cancelado_posterior} onClick={()=>{setActiveTab('cancelado_posterior'); setSearchQuery('')}}>Cancelados Posterior</TabButton>
+      {/* ── Panel de Personal Conectado ── */}
+      <section className="basis-1/2 min-h-0 grid grid-cols-1 md:grid-cols-3 gap-4 overflow-hidden">
 
-          {/* Buscador de servicios */}
-          <div className="ml-auto flex-shrink-0 px-3 py-2">
-            <div className="relative flex items-center">
-              <Search className="absolute left-3 w-4 h-4 text-slate-400 pointer-events-none" />
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={e => setSearchQuery(e.target.value)}
-                placeholder="Buscar folio o expediente..."
-                className="pl-9 pr-8 py-1.5 text-sm border border-slate-300 rounded-lg bg-white text-slate-800 placeholder:text-slate-400 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 w-56 transition-all"
-              />
-              {searchQuery && (
-                <button onClick={() => setSearchQuery('')} className="absolute right-2 text-slate-400 hover:text-slate-600">
-                  <X className="w-4 h-4" />
-                </button>
-              )}
-            </div>
+        {/* Operadores */}
+        <div className="bg-white border border-slate-200 shadow-sm rounded-xl flex flex-col overflow-hidden">
+          <div className="flex items-center gap-2 px-4 py-3 border-b border-slate-100 bg-slate-50 shrink-0">
+            <Users className="w-4 h-4 text-blue-500" />
+            <span className="font-bold text-sm text-slate-700">Operadores</span>
+            <span className="ml-auto text-xs font-bold text-green-600">{onlineOps.length} activos</span>
           </div>
-        </div>
-
-        {/* Resultados de búsqueda - aviso */}
-        {searchQuery && (
-          <div className="px-4 py-2 bg-blue-50 border-b border-blue-100 text-xs text-blue-700 font-medium flex items-center gap-2">
-            <Search className="w-3 h-3" />
-            {filteredServices.length === 0
-              ? `Sin resultados para "${searchQuery}"`
-              : `${filteredServices.length} resultado(s) para "${searchQuery}" — mostrando en todos los estatus`}
-          </div>
-        )}
-
-        {/* Lista SLA */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-slate-50">
-            {filteredServices.length === 0 ? (
-                <div className="h-full flex items-center justify-center text-slate-400 text-sm">
-                  {searchQuery ? `Sin resultados para "${searchQuery}"` : 'No hay servicios en este estatus.'}
-                </div>
-            ) : (
-                filteredServices.map(service => {
-                    const sla = calculateSLA(service)
-                    return (
-                        <Link
-                          key={service.id}
-                          href={`/dashboard/services/${service.id}/capture`}
-                          className="block bg-white border border-slate-200 rounded-lg p-4 shadow-sm relative overflow-hidden hover:border-blue-400 hover:shadow-md transition-all"
-                        >
-                          <div className="flex flex-col md:flex-row gap-4 justify-between">
-                            {/* Folio + Cliente */}
-                            <div className="flex space-x-4">
-                              <div className="w-12 h-12 bg-slate-100 rounded-lg flex items-center justify-center font-black text-slate-700 text-sm hover:bg-blue-100 hover:text-blue-700 transition-colors">
-                                  #{service.folio}
-                              </div>
-                              <div>
-                                  <p className="font-bold text-slate-800">{service.client?.name || 'Cliente Particular'}</p>
-                                  {service.numero_expediente && (
-                                    <p className="text-xs text-blue-600 font-medium mt-0.5">Exp: {service.numero_expediente}</p>
-                                  )}
-                                  <div className="flex gap-2 text-xs text-slate-500 mt-1">
-                                      <span className="flex items-center gap-1"><Truck className="w-3 h-3"/> {service.operator?.full_name || 'SIN ASIGNAR'}</span>
-                                      <span>•</span>
-                                      <span className="uppercase font-semibold text-slate-400">{service.status.replace(/_/g, ' ')}</span>
-                                  </div>
-                              </div>
-                            </div>
-
-                            {/* Barra SLA */}
-                            <div className="flex-1 flex flex-col justify-center max-w-lg w-full shrink-0">
-                               <div className="flex justify-between text-xs font-bold mb-1 items-center">
-                                   <span className={`px-2 py-0.5 rounded flex items-center gap-1 ${sla.color} ${sla.text}`}>
-                                       {sla.warning && <AlertTriangle className="w-3 h-3"/>}
-                                       {sla.message}
-                                   </span>
-                                   <span className="text-slate-500">{sla.progress}%</span>
-                               </div>
-                               <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden flex">
-                                   <div className={`h-full ${sla.barColor} transition-all duration-1000 ease-in-out`} style={{width: `${sla.progress}%`}}></div>
-                               </div>
-                            </div>
-
-                            {/* Acciones */}
-                            <div className="flex items-center">
-                                {service.status === 'sin_operador' && (
-                                    <span className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 text-sm font-bold rounded-lg shadow-sm">
-                                        Asignar Operador
-                                    </span>
-                                )}
-                                {service.status === 'rumbo_contacto' && sla.warning && (
-                                    <span className="border border-red-200 bg-red-50 text-red-600 hover:bg-red-100 px-4 py-2 text-sm font-bold rounded-lg transition-colors shadow-inner">
-                                        Cancelar Asignación
-                                    </span>
-                                )}
-                                {service.status === 'en_captura' && (
-                                   <span className="bg-slate-900 hover:bg-black text-white px-4 py-2 text-sm font-bold rounded-lg shadow-sm">
-                                      Terminar Captura
-                                  </span>
-                                )}
-                            </div>
-                          </div>
-                        </Link>
-                    )
-                })
+          <div className="flex-1 overflow-y-auto divide-y divide-slate-50 p-2 space-y-1">
+            {operators.length === 0 && (
+              <p className="text-center text-slate-400 text-xs py-6">Sin operadores registrados</p>
             )}
+            {onlineOps.map(op => (
+              <PersonnelRow key={op.id} name={op.name ?? op.full_name} sub={op.grua_asignada ? `Grúa: ${op.grua_asignada}` : 'Sin grúa asignada'} online={true} />
+            ))}
+            {offlineOps.map(op => (
+              <PersonnelRow key={op.id} name={op.name ?? op.full_name} sub={op.grua_asignada ? `Grúa: ${op.grua_asignada}` : 'Sin grúa asignada'} online={false} />
+            ))}
+          </div>
         </div>
+
+        {/* Grúas en calle */}
+        <div className="bg-white border border-slate-200 shadow-sm rounded-xl flex flex-col overflow-hidden">
+          <div className="flex items-center gap-2 px-4 py-3 border-b border-slate-100 bg-slate-50 shrink-0">
+            <Truck className="w-4 h-4 text-violet-500" />
+            <span className="font-bold text-sm text-slate-700">Grúas en Calle</span>
+            <span className="ml-auto text-xs font-bold text-violet-600">{trucks.length} activas</span>
+          </div>
+          <div className="flex-1 overflow-y-auto divide-y divide-slate-50 p-2 space-y-1">
+            {trucks.length === 0 && (
+              <p className="text-center text-slate-400 text-xs py-6">Sin grúas con GPS activo</p>
+            )}
+            {trucks.map(tw => (
+              <PersonnelRow
+                key={tw.id}
+                name={`${tw.unit_number}${tw.unit_type ? ` (Tipo ${tw.unit_type})` : ''}`}
+                sub={(tw.profiles as any)?.full_name ?? 'Sin operador'}
+                online={true}
+                icon="truck"
+              />
+            ))}
+          </div>
+        </div>
+
+        {/* Despachadores */}
+        <div className="bg-white border border-slate-200 shadow-sm rounded-xl flex flex-col overflow-hidden">
+          <div className="flex items-center gap-2 px-4 py-3 border-b border-slate-100 bg-slate-50 shrink-0">
+            <Radio className="w-4 h-4 text-amber-500" />
+            <span className="font-bold text-sm text-slate-700">Cabina / Despachadores</span>
+            <span className="ml-auto text-xs font-bold text-amber-600">{dispatchers.filter(d => isOnline(d.updated_at)).length} en línea</span>
+          </div>
+          <div className="flex-1 overflow-y-auto divide-y divide-slate-50 p-2 space-y-1">
+            {dispatchers.length === 0 && (
+              <p className="text-center text-slate-400 text-xs py-6">Sin despachadores registrados</p>
+            )}
+            {dispatchers.map(d => (
+              <PersonnelRow key={d.id} name={d.full_name} sub="Despachador / Call Center" online={isOnline(d.updated_at)} />
+            ))}
+          </div>
+        </div>
+
       </section>
     </div>
   )
 }
 
-function TabButton({ children, active, onClick, count }: { children: React.ReactNode, active: boolean, onClick: ()=>void, count?: number }) {
-    return (
-        <button 
-           onClick={onClick}
-           className={`px-5 py-4 text-sm font-bold uppercase tracking-wider shrink-0 transition-all border-b-2 flex items-center gap-2
-            ${active ? 'border-blue-600 text-blue-700 bg-white' : 'border-transparent text-slate-500 hover:text-slate-800 hover:bg-slate-100'}`}
-        >
-            {children}
-            {count !== undefined && count > 0 && (
-              <span className={`text-xs font-black px-1.5 py-0.5 rounded-full min-w-[20px] text-center ${
-                active ? 'bg-blue-600 text-white' : 'bg-slate-200 text-slate-600'
-              }`}>
-                {count}
-              </span>
-            )}
-        </button>
-    )
+function PersonnelRow({ name, sub, online, icon }: { name: string, sub: string, online: boolean, icon?: string }) {
+  return (
+    <div className={`flex items-center gap-3 px-3 py-2.5 rounded-lg ${online ? 'bg-white' : 'bg-slate-50 opacity-60'}`}>
+      <div className={`relative w-8 h-8 rounded-full flex items-center justify-center text-xs font-black ${online ? 'bg-blue-100 text-blue-700' : 'bg-slate-200 text-slate-500'}`}>
+        {name?.[0]?.toUpperCase() ?? '?'}
+        <Circle className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 fill-current ${online ? 'text-green-500' : 'text-slate-300'}`} />
+      </div>
+      <div className="flex-1 min-w-0">
+        <p className="text-sm font-semibold text-slate-800 truncate">{name}</p>
+        <p className="text-xs text-slate-500 truncate">{sub}</p>
+      </div>
+      <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${online ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-500'}`}>
+        {online ? 'En línea' : 'Offline'}
+      </span>
+    </div>
+  )
 }
