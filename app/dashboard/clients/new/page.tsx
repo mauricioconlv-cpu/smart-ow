@@ -37,33 +37,10 @@ export default function NewClientPage() {
 
     if (!profile?.company_id) return
 
-    const companyId = profile.company_id
+    const companyId  = profile.company_id
     const clientName = formData.get('name') as string
 
-    // Costos por tipo de grúa (local, banderazo, km)
-    const tipoFields = ['a', 'b', 'c', 'd']
-    const tipoCosts: Record<string, number> = {}
-    for (const t of tipoFields) {
-      tipoCosts[`costo_local_tipo_${t}`] = parseFloat(formData.get(`costo_local_tipo_${t}`) as string) || 0
-      tipoCosts[`costo_bande_tipo_${t}`] = parseFloat(formData.get(`costo_bande_tipo_${t}`) as string) || 0
-      tipoCosts[`costo_km_tipo_${t}`]    = parseFloat(formData.get(`costo_km_tipo_${t}`) as string) || 0
-    }
-
-    // Costos adicionales genéricos
-    const extras: Record<string, number> = {}
-    const extraFields = [
-      'costo_maniobra', 'costo_hora_espera', 'costo_abanderamiento', 'costo_resguardo',
-      'costo_dollys', 'costo_patines', 'costo_go_jacks',
-      'costo_rescate_subterraneo', 'costo_adaptacion',
-      'costo_blindaje_1', 'costo_blindaje_2', 'costo_blindaje_3', 'costo_blindaje_4',
-      'costo_blindaje_5', 'costo_blindaje_6', 'costo_blindaje_7',
-      'costo_kg_carga'
-    ]
-    for (const field of extraFields) {
-      extras[field] = parseFloat(formData.get(field) as string) || 0
-    }
-
-    // 1. Insert client
+    // 1. Crear el cliente
     const res = await supabase
       .from('clients')
       .insert({ name: clientName, company_id: companyId })
@@ -76,18 +53,30 @@ export default function NewClientPage() {
       return
     }
 
-    // 2. UNA sola regla de pricing con todos los costos por tipo
-    const { error: rulesErr } = await supabase.from('pricing_rules').insert({
-      client_id: newClient.id,
-      company_id: companyId,
-      tipo: 'general',
-      costo_base: 0,
-      costo_km: 0,
-      ...tipoCosts,
-      ...extras
-    })
+    // 2. Construir payload de costos
+    const payload: Record<string, any> = { client_id: newClient.id }
 
-    if (rulesErr) console.error('Error creando tarifas:', rulesErr.message)
+    for (const t of ['a', 'b', 'c', 'd']) {
+      payload[`costo_local_tipo_${t}`] = parseFloat(formData.get(`costo_local_tipo_${t}`) as string) || 0
+      payload[`costo_bande_tipo_${t}`] = parseFloat(formData.get(`costo_bande_tipo_${t}`) as string) || 0
+      payload[`costo_km_tipo_${t}`]    = parseFloat(formData.get(`costo_km_tipo_${t}`) as string) || 0
+    }
+
+    const extraFields = [
+      'costo_maniobra', 'costo_hora_espera', 'costo_abanderamiento', 'costo_resguardo',
+      'costo_dollys', 'costo_patines', 'costo_go_jacks',
+      'costo_rescate_subterraneo', 'costo_adaptacion',
+      'costo_blindaje_1', 'costo_blindaje_2', 'costo_blindaje_3', 'costo_blindaje_4',
+      'costo_blindaje_5', 'costo_blindaje_6', 'costo_blindaje_7',
+      'costo_kg_carga'
+    ]
+    for (const field of extraFields) {
+      payload[field] = parseFloat(formData.get(field) as string) || 0
+    }
+
+    // 3. Guardar tarifas via RPC (bypasea el schema cache de PostgREST)
+    const { data: rpcResult, error: rpcErr } = await supabase.rpc('upsert_client_rates', { payload })
+    if (rpcErr) console.error('RPC error guardando tarifas:', rpcErr.message)
 
     redirect('/dashboard/clients')
   }

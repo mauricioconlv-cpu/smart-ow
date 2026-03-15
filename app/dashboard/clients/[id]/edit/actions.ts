@@ -14,13 +14,16 @@ export async function updateClientWithRates(formData: FormData): Promise<void> {
   const clientName = formData.get('name') as string
   if (!clientId) return
 
-  const tipoFields = ['a', 'b', 'c', 'd']
-  const costs: Record<string, number> = {}
+  // Actualizar nombre del cliente
+  await supabase.from('clients').update({ name: clientName }).eq('id', clientId)
 
-  for (const t of tipoFields) {
-    costs[`costo_local_tipo_${t}`] = parseFloat(formData.get(`costo_local_tipo_${t}`) as string) || 0
-    costs[`costo_bande_tipo_${t}`] = parseFloat(formData.get(`costo_bande_tipo_${t}`) as string) || 0
-    costs[`costo_km_tipo_${t}`]    = parseFloat(formData.get(`costo_km_tipo_${t}`) as string) || 0
+  // Construir payload de costos
+  const payload: Record<string, any> = { client_id: clientId }
+
+  for (const t of ['a', 'b', 'c', 'd']) {
+    payload[`costo_local_tipo_${t}`] = parseFloat(formData.get(`costo_local_tipo_${t}`) as string) || 0
+    payload[`costo_bande_tipo_${t}`] = parseFloat(formData.get(`costo_bande_tipo_${t}`) as string) || 0
+    payload[`costo_km_tipo_${t}`]    = parseFloat(formData.get(`costo_km_tipo_${t}`) as string) || 0
   }
 
   const extraFields = [
@@ -32,35 +35,19 @@ export async function updateClientWithRates(formData: FormData): Promise<void> {
     'costo_kg_carga'
   ]
   for (const field of extraFields) {
-    costs[field] = parseFloat(formData.get(field) as string) || 0
+    payload[field] = parseFloat(formData.get(field) as string) || 0
   }
 
-  // 1. Actualizar nombre
-  await supabase.from('clients').update({ name: clientName }).eq('id', clientId)
+  // Usar RPC para guardar: bypasea schema cache y migra formato viejo → nuevo
+  const { data: result, error } = await supabase.rpc('upsert_client_rates', { payload })
 
-  // 2. Verificar si existen reglas de pricing
-  const { data: existingRules } = await supabase
-    .from('pricing_rules')
-    .select('id')
-    .eq('client_id', clientId)
+  if (error) {
+    console.error('RPC error saving client rates:', error.message)
+  }
 
-  if (existingRules && existingRules.length > 0) {
-    await supabase.from('pricing_rules').update(costs).eq('client_id', clientId)
-  } else {
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('company_id')
-      .eq('id', user.id)
-      .single()
-
-    await supabase.from('pricing_rules').insert({
-      client_id:  clientId,
-      company_id: profile?.company_id,
-      tipo:       'general',
-      costo_base: 0,
-      costo_km:   0,
-      ...costs
-    })
+  const res = result as any
+  if (res?.error) {
+    console.error('Business error saving rates:', res.error)
   }
 
   revalidatePath('/dashboard/clients')
