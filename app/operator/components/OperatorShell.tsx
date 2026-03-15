@@ -35,33 +35,38 @@ export default function OperatorShell({
   const [checked, setChecked] = useState(!!initialTruck) // if server already knows the truck, skip re-check
 
   useEffect(() => {
-    if (checked) return // Already have verified data from server
+    if (checked) return
 
-    // Re-validate since SSR value could be stale
-    import('@/lib/supabase/client').then(({ createClient }) => {
-      const supabase = createClient()
-      supabase
-        .from('profiles')
-        .select('tow_truck_id')
-        .eq('id', operatorId)
-        .single()
-        .then(async ({ data: profileData }) => {
-          if (!profileData?.tow_truck_id) {
-            setTruck(null)
-            setChecked(true)
-            return
-          }
-          const { data: truckData } = await supabase
-            .from('tow_trucks')
-            .select('id, unit_number, brand, model, plates')
-            .eq('id', profileData.tow_truck_id)
-            .single()
+    // Use async IIFE to avoid .then().catch() on PromiseLike (Supabase type limitation)
+    ;(async () => {
+      try {
+        const { createClient } = await import('@/lib/supabase/client')
+        const supabase = createClient()
 
-          setTruck(truckData || null)
+        const { data: profileData } = await supabase
+          .from('profiles')
+          .select('tow_truck_id')
+          .eq('id', operatorId)
+          .single()
+
+        if (!profileData?.tow_truck_id) {
+          setTruck(null)
           setChecked(true)
-        })
-        .catch(() => setChecked(true))
-    })
+          return
+        }
+
+        const { data: truckData } = await supabase
+          .from('tow_trucks')
+          .select('id, unit_number, brand, model, plates')
+          .eq('id', profileData.tow_truck_id)
+          .single()
+
+        setTruck(truckData || null)
+        setChecked(true)
+      } catch {
+        setChecked(true)
+      }
+    })()
   }, [operatorId, checked])
 
   // Loading while we verify
