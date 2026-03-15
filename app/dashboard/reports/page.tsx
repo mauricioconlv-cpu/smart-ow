@@ -1,95 +1,268 @@
-import { createClient } from '@/lib/supabase/server'
-import { Calendar, Star, History } from 'lucide-react'
-import DownloadPDFButton from '@/app/operator/components/DownloadPDFButton'
+'use client'
+
+import { useState, useEffect, useCallback } from 'react'
+import { createBrowserClient } from '@supabase/ssr'
+import { History, Search, X, Calendar, Users, Filter, Loader2, Star } from 'lucide-react'
 import ExportExcelButton from './ExportExcelButton'
+import DownloadPDFButton from '@/app/operator/components/DownloadPDFButton'
 
-export default async function ReportsPage() {
-  const supabase = await createClient()
+const supabase = createBrowserClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+)
 
-  // Traer servicios terminados
-  const { data: services } = await supabase
-    .from('services')
-    .select(`
-      id,
-      folio,
-      status,
-      costo_calculado,
-      calidad_estrellas,
-      firma_url,
-      tipo_servicio,
-      created_at,
-      updated_at,
-      origen_coords,
-      destino_coords,
-      clients ( name ),
-      profiles ( full_name )
-    `)
-    .eq('status', 'servicio_cerrado')
-    .order('updated_at', { ascending: false })
-    .limit(50)
+export default function ReportsPage() {
+  const [services, setServices]       = useState<any[]>([])
+  const [clients, setClients]         = useState<any[]>([])
+  const [loading, setLoading]         = useState(false)
+  const [searched, setSearched]       = useState(false)
+
+  // Filtros
+  const [searchQuery, setSearchQuery] = useState('')
+  const [clientId, setClientId]       = useState('')
+  const [dateFrom, setDateFrom]       = useState('')
+  const [dateTo, setDateTo]           = useState('')
+
+  // Cargar clientes para el dropdown
+  useEffect(() => {
+    supabase.from('clients').select('id, name').order('name').then(({ data }) => {
+      if (data) setClients(data)
+    })
+  }, [])
+
+  const hasFilters = searchQuery.trim() || clientId || dateFrom || dateTo
+
+  const runSearch = useCallback(async () => {
+    setLoading(true)
+    setSearched(true)
+
+    let query = supabase
+      .from('services')
+      .select(`
+        id, folio, status, costo_calculado, calidad_estrellas,
+        firma_url, tipo_servicio, created_at, updated_at,
+        numero_expediente, insurance_folio,
+        origen_coords, destino_coords,
+        clients ( name ),
+        profiles ( full_name )
+      `)
+      .eq('status', 'servicio_cerrado')
+      .order('updated_at', { ascending: false })
+      .limit(100)
+
+    // Filtro por cliente
+    if (clientId) {
+      query = query.eq('client_id', clientId)
+    }
+
+    // Filtro por rango de fecha (updated_at = fecha de cierre)
+    if (dateFrom) {
+      query = query.gte('updated_at', dateFrom + 'T00:00:00')
+    }
+    if (dateTo) {
+      query = query.lte('updated_at', dateTo + 'T23:59:59')
+    }
+
+    // Búsqueda por folio / expediente aseguradora: filtrado en cliente
+    // (no se puede hacer OR en Supabase directamente, traemos y filtramos)
+    const { data } = await query
+
+    let result = data || []
+
+    const q = searchQuery.trim().toLowerCase()
+    if (q) {
+      result = result.filter(s => {
+        const folioMatch     = String(s.folio).includes(q)
+        const expMatch       = (s.numero_expediente || '').toLowerCase().includes(q)
+        const insMatch       = (s.insurance_folio   || '').toLowerCase().includes(q)
+        return folioMatch || expMatch || insMatch
+      })
+    }
+
+    setServices(result)
+    setLoading(false)
+  }, [searchQuery, clientId, dateFrom, dateTo])
+
+  function clearFilters() {
+    setSearchQuery('')
+    setClientId('')
+    setDateFrom('')
+    setDateTo('')
+    setServices([])
+    setSearched(false)
+  }
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center pb-4 border-b border-gray-200">
+
+      {/* Header */}
+      <div className="flex justify-between items-start pb-4 border-b border-gray-200">
         <div>
           <h2 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
             <History className="h-6 w-6 text-blue-600" />
             Historial y Reportes
           </h2>
           <p className="mt-1 text-sm text-gray-500">
-            Consulta los servicios completados, calidad de operador y exporta memorias descriptivas.
+            Consulta servicios cerrados filtrando por fecha, cliente o folio.
           </p>
         </div>
-        <ExportExcelButton data={services || []} />
+        <ExportExcelButton data={services} />
       </div>
 
-      <div className="bg-white shadow rounded-lg overflow-hidden">
-        <ul role="list" className="divide-y divide-gray-200">
-          {(!services || services.length === 0) ? (
-            <li className="px-6 py-12 text-center text-gray-500">
-              No hay servicios finalizados en el historial.
-            </li>
-          ) : (
-            services.map((service) => (
-              <li key={service.id} className="p-6 hover:bg-gray-50 transition-colors">
-                 <div className="flex justify-between">
-                    <div className="flex gap-4">
-                       <div className="h-16 w-16 bg-blue-50 border border-blue-100 rounded-lg flex flex-col items-center justify-center">
-                         <span className="text-xs text-blue-500 font-bold">FOLIO</span>
-                         <span className="text-lg text-blue-800 font-black">#{service.folio}</span>
-                       </div>
-                       <div>
-                         <h3 className="text-lg font-bold text-slate-900">{(service.clients as any)?.name}</h3>
-                         <div className="flex items-center gap-4 text-sm text-slate-500 mt-1">
-                           <span className="flex items-center gap-1">
-                             <Calendar className="h-4 w-4" /> 
-                             {new Date(service.updated_at).toLocaleDateString()}
-                           </span>
-                           <span>Operador: {(service.profiles as any)?.full_name}</span>
-                         </div>
-                       </div>
-                    </div>
-
-                    <div className="text-right flex flex-col items-end gap-2">
-                       <span className="text-xl font-bold text-green-600">
-                         ${Number(service.costo_calculado).toLocaleString('es-MX', {minimumFractionDigits: 2})} MXN
-                       </span>
-                       <div className="flex text-yellow-500 gap-0.5" title={`${service.calidad_estrellas} Estrellas`}>
-                         {[...Array(service.calidad_estrellas || 0)].map((_, i) => (
-                           <Star key={i} className="h-4 w-4 fill-current" />
-                         ))}
-                       </div>
-                    </div>
-                 </div>
-
-                 <div className="mt-4 flex justify-end shrink-0 max-w-[200px] ml-auto">
-                    <DownloadPDFButton service={service} />
-                 </div>
-              </li>
-            ))
+      {/* Panel de filtros */}
+      <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
+        <div className="flex items-center gap-2 mb-4">
+          <Filter className="w-4 h-4 text-slate-500" />
+          <span className="font-semibold text-sm text-slate-700">Filtros de búsqueda</span>
+          {hasFilters && (
+            <button onClick={clearFilters} className="ml-auto flex items-center gap-1 text-xs text-slate-400 hover:text-red-500 transition">
+              <X className="w-3.5 h-3.5" /> Limpiar todo
+            </button>
           )}
-        </ul>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          {/* Búsqueda por folio */}
+          <div className="relative">
+            <label className="block text-xs font-medium text-slate-500 mb-1">Folio / Exp. Aseguradora</label>
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={e => setSearchQuery(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && hasFilters && runSearch()}
+                placeholder="Ej. 7 ó 5454544"
+                className="w-full pl-9 pr-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
+              />
+            </div>
+          </div>
+
+          {/* Filtro por cliente */}
+          <div>
+            <label className="block text-xs font-medium text-slate-500 mb-1 flex items-center gap-1">
+              <Users className="w-3 h-3" /> Cliente / Aseguradora
+            </label>
+            <select
+              value={clientId}
+              onChange={e => setClientId(e.target.value)}
+              className="w-full py-2 px-3 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900 bg-white"
+            >
+              <option value="">Todos los clientes</option>
+              {clients.map(c => (
+                <option key={c.id} value={c.id}>{c.name}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Fecha desde */}
+          <div>
+            <label className="block text-xs font-medium text-slate-500 mb-1 flex items-center gap-1">
+              <Calendar className="w-3 h-3" /> Fecha desde
+            </label>
+            <input
+              type="date"
+              value={dateFrom}
+              onChange={e => setDateFrom(e.target.value)}
+              className="w-full py-2 px-3 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
+            />
+          </div>
+
+          {/* Fecha hasta */}
+          <div>
+            <label className="block text-xs font-medium text-slate-500 mb-1 flex items-center gap-1">
+              <Calendar className="w-3 h-3" /> Fecha hasta
+            </label>
+            <input
+              type="date"
+              value={dateTo}
+              onChange={e => setDateTo(e.target.value)}
+              className="w-full py-2 px-3 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
+            />
+          </div>
+        </div>
+
+        <div className="mt-4 flex justify-end">
+          <button
+            onClick={runSearch}
+            disabled={!hasFilters || loading}
+            className="flex items-center gap-2 px-6 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold text-sm rounded-lg transition disabled:opacity-40"
+          >
+            {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
+            Buscar
+          </button>
+        </div>
       </div>
+
+      {/* Estado inicial */}
+      {!searched && (
+        <div className="bg-white rounded-xl border border-slate-200 text-center py-16 text-slate-400">
+          <History className="w-10 h-10 mx-auto mb-3 opacity-30" />
+          <p className="text-sm font-medium">Usa los filtros de arriba para buscar expedientes cerrados</p>
+          <p className="text-xs mt-1">Puedes combinar fecha + cliente + folio para resultados precisos</p>
+        </div>
+      )}
+
+      {/* Sin resultados */}
+      {searched && !loading && services.length === 0 && (
+        <div className="bg-white rounded-xl border border-slate-200 text-center py-16 text-slate-400">
+          <Search className="w-10 h-10 mx-auto mb-3 opacity-30" />
+          <p className="text-sm font-medium">Sin resultados para los filtros aplicados</p>
+          <p className="text-xs mt-1">Intenta cambiar el rango de fechas o el cliente</p>
+        </div>
+      )}
+
+      {/* Resultados */}
+      {searched && services.length > 0 && (
+        <div className="bg-white shadow rounded-xl overflow-hidden border border-slate-200">
+          {/* Encabezado de resultados */}
+          <div className="px-5 py-3 bg-slate-50 border-b border-slate-200 flex items-center gap-2">
+            <span className="text-sm font-semibold text-slate-700">{services.length} expediente{services.length !== 1 ? 's' : ''} encontrado{services.length !== 1 ? 's' : ''}</span>
+          </div>
+
+          <ul role="list" className="divide-y divide-gray-100">
+            {services.map((service) => (
+              <li key={service.id} className="p-6 hover:bg-gray-50 transition-colors">
+                <div className="flex justify-between gap-4">
+                  <div className="flex gap-4">
+                    <div className="h-16 w-16 bg-blue-50 border border-blue-100 rounded-lg flex flex-col items-center justify-center shrink-0">
+                      <span className="text-xs text-blue-500 font-bold">FOLIO</span>
+                      <span className="text-lg text-blue-800 font-black">#{service.folio}</span>
+                    </div>
+                    <div>
+                      <h3 className="text-lg font-bold text-slate-900">{(service.clients as any)?.name}</h3>
+                      {service.numero_expediente && (
+                        <p className="text-xs text-blue-600 font-medium">Exp: {service.numero_expediente}</p>
+                      )}
+                      {service.insurance_folio && (
+                        <p className="text-xs text-violet-600 font-medium">Folio Aseg: {service.insurance_folio}</p>
+                      )}
+                      <div className="flex items-center gap-4 text-sm text-slate-500 mt-1">
+                        <span>📅 {new Date(service.updated_at).toLocaleDateString('es-MX', { day:'2-digit', month:'short', year:'numeric' })}</span>
+                        <span>Operador: {(service.profiles as any)?.full_name ?? '—'}</span>
+                      </div>
+                      {(service.calidad_estrellas ?? 0) > 0 && (
+                        <div className="flex text-yellow-400 gap-0.5 mt-1">
+                          {[...Array(service.calidad_estrellas)].map((_, i) => (
+                            <Star key={i} className="h-3.5 w-3.5 fill-current" />
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="text-right flex flex-col items-end gap-3 shrink-0">
+                    <span className="text-xl font-bold text-green-600">
+                      ${Number(service.costo_calculado || 0).toLocaleString('es-MX', { minimumFractionDigits: 2 })} MXN
+                    </span>
+                    <DownloadPDFButton service={service} />
+                  </div>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
     </div>
   )
 }
