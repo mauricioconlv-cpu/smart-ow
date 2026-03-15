@@ -1,9 +1,9 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
-import { useParams, useRouter } from 'next/navigation'
+import { useState, useRef, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { ArrowLeft, Camera, User, Loader2, AlertTriangle, Truck } from 'lucide-react'
+import { ArrowLeft, Camera, User, Loader2, AlertTriangle, ChevronDown } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 
 const DIAS_SEMANA = [
@@ -21,60 +21,32 @@ function calcularHoras(entrada: string, salida: string): number | null {
   const [eh, em] = entrada.split(':').map(Number)
   const [sh, sm] = salida.split(':').map(Number)
   let mins = (sh * 60 + sm) - (eh * 60 + em)
-  if (mins < 0) mins += 24 * 60
+  if (mins < 0) mins += 24 * 60 // turno nocturno
   return parseFloat((mins / 60).toFixed(2))
 }
 
-export default function EditUserPage() {
-  const params  = useParams()
-  const router  = useRouter()
-  const id      = params.id as string
+export default function NewUserClientForm({
+  isSuperAdmin,
+  companies,
+}: {
+  isSuperAdmin: boolean
+  companies: { id: string; name: string }[]
+}) {
+  const router = useRouter()
   const supabase = createClient()
   const fileInputRef = useRef<HTMLInputElement>(null)
 
-  const [profile, setProfile]         = useState<any>(null)
-  const [towTrucks, setTowTrucks]     = useState<any[]>([])
-  const [isLoading, setIsLoading]     = useState(true)
-  const [isSaving, setIsSaving]       = useState(false)
-  const [errorMsg, setErrorMsg]       = useState('')
-  const [selectedRole, setSelectedRole] = useState('')
-  const [diasDescanso, setDiasDescanso] = useState<string[]>([])
-  const [horaEntrada, setHoraEntrada]   = useState('08:00')
-  const [horaSalida, setHoraSalida]     = useState('17:00')
-  const [tipoJornada, setTipoJornada]   = useState('normal')
+  const [isSaving, setIsSaving] = useState(false)
+  const [error, setError] = useState('')
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null)
-  const [avatarFile, setAvatarFile]       = useState<File | null>(null)
+  const [avatarFile, setAvatarFile] = useState<File | null>(null)
+  const [selectedRole, setSelectedRole] = useState('dispatcher')
+  const [diasDescanso, setDiasDescanso] = useState<string[]>(['sabado', 'domingo'])
+  const [horaEntrada, setHoraEntrada] = useState('08:00')
+  const [horaSalida, setHoraSalida] = useState('17:00')
+  const [tipoJornada, setTipoJornada] = useState('normal')
 
   const horasLaboradas = calcularHoras(horaEntrada, horaSalida)
-
-  useEffect(() => {
-    async function loadData() {
-      const { data: pData, error: pError } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', id)
-        .single()
-
-      if (pError || !pData) {
-        setErrorMsg('No se pudo encontrar el empleado o no tienes permisos.')
-        setIsLoading(false)
-        return
-      }
-      setProfile(pData)
-      setSelectedRole(pData.role)
-      setDiasDescanso(pData.dias_descanso || [])
-      setHoraEntrada(pData.hora_entrada?.slice(0,5) || '08:00')
-      setHoraSalida(pData.hora_salida?.slice(0,5) || '17:00')
-      setTipoJornada(pData.tipo_jornada || 'normal')
-      if (pData.avatar_url) setAvatarPreview(pData.avatar_url)
-
-      const { data: tData } = await supabase.from('tow_trucks').select('*').eq('is_active', true)
-      if (tData) setTowTrucks(tData)
-
-      setIsLoading(false)
-    }
-    loadData()
-  }, [id])
 
   function handleAvatarChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
@@ -92,96 +64,92 @@ export default function EditUserPage() {
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
     setIsSaving(true)
-    setErrorMsg('')
+    setError('')
 
     const form = e.currentTarget
-    const fd   = new FormData(form)
+    const fd = new FormData(form)
+
+    const phone    = (fd.get('phone') as string || '').replace(/\D/g, '')
+    const password = fd.get('password') as string
+    const fullName = fd.get('fullName') as string
+    const role     = fd.get('role') as string
+    const nss      = fd.get('nss') as string
+    const salario  = fd.get('salario_mensual') as string
+    const grua     = fd.get('grua') as string
+    const companyId = fd.get('companyId') as string
+
+    if (!phone || phone.length < 10) {
+      setError('El número de teléfono debe tener al menos 10 dígitos.')
+      setIsSaving(false)
+      return
+    }
 
     try {
-      // 1. Upload avatar si hay uno nuevo
-      let avatar_url = profile.avatar_url || null
-      if (avatarFile) {
-        const ext  = avatarFile.name.split('.').pop()
-        const path = `${id}/avatar.${ext}`
+      const res = await fetch('/api/users/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          phone, password, fullName, role, nss,
+          salario_mensual: salario ? parseFloat(salario) : null,
+          grua: grua || null,
+          companyId: companyId || null,
+          hora_entrada: horaEntrada || null,
+          hora_salida: horaSalida || null,
+          dias_descanso: diasDescanso,
+          tipo_jornada: tipoJornada,
+        }),
+      })
+
+      const result = await res.json()
+      if (!res.ok || result.error) throw new Error(result.error || 'Error al crear usuario.')
+
+      const newUserId = result.userId
+
+      // Subir avatar si existe
+      if (avatarFile && newUserId) {
+        const ext = avatarFile.name.split('.').pop()
+        const path = `${newUserId}/avatar.${ext}`
         const { data: uploadData, error: uploadErr } = await supabase.storage
           .from('avatars')
           .upload(path, avatarFile, { upsert: true })
+
         if (!uploadErr && uploadData) {
           const { data: urlData } = supabase.storage.from('avatars').getPublicUrl(path)
-          avatar_url = urlData.publicUrl
+          await supabase.from('profiles').update({ avatar_url: urlData.publicUrl }).eq('id', newUserId)
         }
       }
-
-      // 2. Construir payload
-      const payload: any = {
-        full_name:       fd.get('fullName') as string,
-        role:            selectedRole,
-        phone:           (fd.get('phone') as string || '').replace(/\D/g, '') || null,
-        nss:             fd.get('nss') as string || null,
-        salario_mensual: fd.get('salario_mensual') ? parseFloat(fd.get('salario_mensual') as string) : null,
-        hora_entrada:    horaEntrada || null,
-        hora_salida:     horaSalida  || null,
-        dias_descanso:   diasDescanso,
-        tipo_jornada:    tipoJornada,
-        avatar_url,
-      }
-
-      if (selectedRole === 'operator') {
-        const grua = fd.get('grua_asignada') as string
-        payload.grua_asignada = grua || null
-        payload.tow_truck_id  = grua || null
-      } else {
-        payload.grua_asignada = null
-        payload.tow_truck_id  = null
-      }
-
-      const { error: updateErr } = await supabase.from('profiles').update(payload).eq('id', id)
-      if (updateErr) throw new Error(updateErr.message)
 
       router.push('/dashboard/users')
       router.refresh()
     } catch (err: any) {
-      setErrorMsg(err.message || 'Error al actualizar.')
+      setError(err.message || 'Error inesperado.')
       setIsSaving(false)
     }
   }
 
-  if (isLoading) return (
-    <div className="p-8 text-center text-slate-500">
-      <Loader2 className="w-8 h-8 animate-spin mx-auto text-blue-500"/>
-    </div>
-  )
-
-  if (!profile) return (
-    <div className="p-8 text-center text-red-500 font-bold">{errorMsg}</div>
-  )
-
   return (
     <div className="max-w-3xl mx-auto space-y-6 pb-12">
-      {/* Header */}
-      <div className="flex items-center gap-4 mb-6">
-        <Link href="/dashboard/users" className="p-2 hover:bg-slate-200 rounded-full transition-colors text-slate-600">
-          <ArrowLeft className="h-5 w-5" />
+      <div className="flex items-center space-x-4 pb-4 border-b border-gray-200">
+        <Link href="/dashboard/users" className="text-gray-400 hover:text-gray-600 transition-colors">
+          <ArrowLeft className="h-6 w-6" />
         </Link>
         <div>
-          <h1 className="text-2xl font-bold text-slate-800">Modificar Perfil: {profile.full_name}</h1>
-          <p className="text-sm text-slate-500 mt-1">
-            ID: <span className="font-mono text-xs bg-slate-100 px-1 rounded">{profile.id}</span>
-          </p>
+          <h2 className="text-2xl font-bold text-gray-900">Nuevas Credenciales</h2>
+          <p className="mt-1 text-sm text-gray-500">Registra un nuevo empleado. El acceso será por número de teléfono.</p>
         </div>
       </div>
 
-      {errorMsg && (
-        <div className="bg-red-50 text-red-600 p-4 rounded-lg mb-6 text-sm border border-red-100 flex items-center gap-3">
-          <AlertTriangle className="w-4 h-4" />
-          {errorMsg}
+      {error && (
+        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm flex items-center gap-2">
+          <AlertTriangle className="w-4 h-4 flex-shrink-0" />
+          {error}
         </div>
       )}
 
       <form onSubmit={handleSubmit} className="space-y-6">
 
         {/* ── FOTO DE PERFIL ── */}
-        <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
+        <div className="bg-white shadow rounded-xl p-6">
           <h3 className="text-base font-semibold text-slate-800 mb-4">Foto de Perfil</h3>
           <div className="flex items-center gap-6">
             <button
@@ -203,98 +171,131 @@ export default function EditUserPage() {
                 </div>
               )}
             </button>
-            <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleAvatarChange} />
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={handleAvatarChange}
+            />
             <div className="text-sm text-slate-500">
               <p className="font-medium text-slate-700">Foto del empleado</p>
               <p>JPG, PNG o WEBP. Máx. 5 MB.</p>
-              {avatarPreview && <p className="text-green-600 mt-1">✓ Foto cargada</p>}
+              <p className="mt-1 text-blue-600">Esta foto aparecerá en su bienvenida al iniciar sesión.</p>
             </div>
           </div>
         </div>
 
         {/* ── DATOS PERSONALES ── */}
-        <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
+        <div className="bg-white shadow rounded-xl p-6">
           <h3 className="text-base font-semibold text-slate-800 mb-4">Datos Personales</h3>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
             <div className="md:col-span-2">
               <label className="block text-sm font-medium text-slate-700 mb-1">Nombre Completo *</label>
               <input
                 type="text" name="fullName" required
-                defaultValue={profile.full_name}
-                className="bg-white text-slate-900 w-full px-4 py-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                placeholder="Ej. Juan Pérez García"
+                className="w-full px-4 py-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-gray-900 bg-white"
               />
             </div>
+
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Teléfono (Login)</label>
+              <label className="block text-sm font-medium text-slate-700 mb-1">
+                Teléfono (Usado para Iniciar Sesión) *
+              </label>
               <input
-                type="tel" name="phone"
-                defaultValue={profile.phone || ''}
+                type="tel" name="phone" required
                 placeholder="5512345678"
-                className="bg-white text-slate-900 w-full px-4 py-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                className="w-full px-4 py-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-gray-900 bg-white"
               />
+              <p className="text-xs text-slate-500 mt-1">Este número será el usuario de acceso al sistema.</p>
             </div>
+
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">NSS (Número de Seguridad Social)</label>
               <input
-                type="text" name="nss" maxLength={11}
-                defaultValue={profile.nss || ''}
-                placeholder="12345678901"
-                className="bg-white text-slate-900 w-full px-4 py-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                type="text" name="nss"
+                placeholder="Ej. 12345678901"
+                maxLength={11}
+                className="w-full px-4 py-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-gray-900 bg-white"
               />
             </div>
+
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Contraseña Provisional *</label>
+              <input
+                type="text" name="password" required
+                placeholder="Genera una clave segura..."
+                className="w-full px-4 py-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-gray-900 bg-white"
+              />
+            </div>
+
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">Salario Mensual</label>
               <div className="relative">
                 <span className="absolute inset-y-0 left-3 flex items-center text-slate-400 text-sm">$</span>
                 <input
                   type="number" name="salario_mensual" min="0" step="0.01"
-                  defaultValue={profile.salario_mensual || ''}
                   placeholder="0.00"
-                  className="bg-white text-slate-900 w-full pl-7 pr-4 py-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                  className="w-full pl-7 pr-4 py-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-gray-900 bg-white"
                 />
               </div>
             </div>
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Rol de Acceso *</label>
-              <select
-                name="role" value={selectedRole}
-                onChange={e => setSelectedRole(e.target.value)}
-                className="bg-white text-slate-900 w-full px-4 py-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="admin">Administrador</option>
-                <option value="dispatcher">Despachador (Call Center)</option>
-                <option value="operator">Operador / Chófer de Grúa</option>
-              </select>
-            </div>
           </div>
+        </div>
 
-          {selectedRole === 'operator' && (
-            <div className="mt-4 bg-slate-50 border border-slate-200 p-4 rounded-lg">
-              <label className="block text-sm font-medium text-slate-700 mb-1 flex items-center gap-2">
-                <Truck className="w-4 h-4 text-slate-500"/>
-                Asignación de Unidad
-              </label>
+        {/* ── ROL Y EMPRESA ── */}
+        <div className="bg-white shadow rounded-xl p-6">
+          <h3 className="text-base font-semibold text-slate-800 mb-4">Rol y Acceso</h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Rol en el Sistema *</label>
               <select
-                name="grua_asignada"
-                defaultValue={profile.tow_truck_id || profile.grua_asignada || ''}
-                className="mt-2 bg-white text-slate-900 w-full px-4 py-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                name="role" required
+                value={selectedRole}
+                onChange={e => setSelectedRole(e.target.value)}
+                className="w-full px-4 py-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white text-gray-900"
               >
-                <option value="">-- Sin Vehículo Asignado --</option>
-                {towTrucks.map(truck => (
-                  <option key={truck.id} value={truck.id}>
-                    Eco: {truck.economic_number} | {truck.brand} - {truck.plates}
-                  </option>
-                ))}
+                {isSuperAdmin && <option value="admin">Administrador (Dueño de Empresa)</option>}
+                <option value="dispatcher">Despachador (Call Center)</option>
+                <option value="operator">Operador (Grúa)</option>
               </select>
             </div>
-          )}
+
+            {isSuperAdmin && (
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Asignar a Empresa *</label>
+                <select
+                  name="companyId" required={isSuperAdmin}
+                  className="w-full px-4 py-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white text-gray-900"
+                >
+                  <option value="">Seleccione una empresa...</option>
+                  {companies.map(c => (
+                    <option key={c.id} value={c.id}>{c.name}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {selectedRole === 'operator' && (
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">ID de Grúa (Opcional)</label>
+                <input
+                  type="text" name="grua"
+                  placeholder="Ej. Unidad 04"
+                  className="w-full px-4 py-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-gray-900 bg-white"
+                />
+              </div>
+            )}
+          </div>
         </div>
 
         {/* ── JORNADA LABORAL ── */}
-        <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
+        <div className="bg-white shadow rounded-xl p-6">
           <h3 className="text-base font-semibold text-slate-800 mb-1">Jornada Laboral</h3>
-          <p className="text-xs text-slate-500 mb-4">Edita el horario. Las horas laboradas se calculan automáticamente.</p>
+          <p className="text-xs text-slate-500 mb-4">Define el horario de trabajo. Las horas se calculan automáticamente.</p>
 
+          {/* Tipo de jornada (especial para operadores) */}
           {selectedRole === 'operator' && (
             <div className="mb-5">
               <label className="block text-sm font-medium text-slate-700 mb-2">Tipo de Jornada del Operador</label>
@@ -306,7 +307,8 @@ export default function EditUserPage() {
                   { val: '5x2', label: '5 × 2', desc: '5 días / 2 descanso' },
                 ].map(j => (
                   <button
-                    key={j.val} type="button"
+                    key={j.val}
+                    type="button"
                     onClick={() => setTipoJornada(j.val)}
                     className={`flex flex-col items-center p-3 rounded-lg border-2 text-center transition-all ${
                       tipoJornada === j.val
@@ -322,22 +324,25 @@ export default function EditUserPage() {
             </div>
           )}
 
+          {/* Horas entrada/salida - solo para jornadas distintas a 24x24 y 48h */}
           {!(selectedRole === 'operator' && (tipoJornada === '24x24' || tipoJornada === '48h')) && (
             <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Hora de Entrada</label>
                 <input
-                  type="time" value={horaEntrada}
+                  type="time" name="hora_entrada"
+                  value={horaEntrada}
                   onChange={e => setHoraEntrada(e.target.value)}
-                  className="bg-white text-slate-900 w-full px-4 py-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-4 py-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-gray-900 bg-white"
                 />
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Hora de Salida</label>
                 <input
-                  type="time" value={horaSalida}
+                  type="time" name="hora_salida"
+                  value={horaSalida}
                   onChange={e => setHoraSalida(e.target.value)}
-                  className="bg-white text-slate-900 w-full px-4 py-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-4 py-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-gray-900 bg-white"
                 />
               </div>
               <div>
@@ -354,23 +359,25 @@ export default function EditUserPage() {
           )}
 
           {selectedRole === 'operator' && tipoJornada === '24x24' && (
-            <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-sm text-amber-700 mt-2">
-              🔄 Jornada 24×24: 24 horas de servicio continuo, seguidas de 24 horas de descanso.
+            <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-sm text-amber-700">
+              🔄 Jornada 24×24: 24 horas de servicio continuo, seguidas de 24 horas de descanso. El sistema alternará automáticamente.
             </div>
           )}
           {selectedRole === 'operator' && tipoJornada === '48h' && (
-            <div className="bg-orange-50 border border-orange-200 rounded-lg p-3 text-sm text-orange-700 mt-2">
-              ⏱ Jornada 48 Horas: Turno continuo de 48 horas seguidas de descanso.
+            <div className="bg-orange-50 border border-orange-200 rounded-lg p-3 text-sm text-orange-700">
+              ⏱ Jornada 48 Horas: Turno continuo de 48 horas seguidas de descanso según acuerdo laboral.
             </div>
           )}
 
+          {/* Días de descanso */}
           {!(tipoJornada === '24x24' || tipoJornada === '48h') && (
             <div className="mt-5">
               <label className="block text-sm font-medium text-slate-700 mb-2">Días de Descanso</label>
               <div className="flex gap-2 flex-wrap">
                 {DIAS_SEMANA.map(dia => (
                   <button
-                    key={dia.id} type="button"
+                    key={dia.id}
+                    type="button"
                     onClick={() => toggleDia(dia.id)}
                     className={`px-3 py-2 rounded-lg text-sm font-medium border-2 transition-all ${
                       diasDescanso.includes(dia.id)
@@ -391,22 +398,18 @@ export default function EditUserPage() {
           )}
         </div>
 
-        {/* Submit */}
-        <div className="flex items-center justify-end gap-3">
-          <Link
-            href="/dashboard/users"
-            className="px-6 py-2.5 text-slate-600 font-medium hover:bg-slate-100 rounded-lg transition-colors border border-transparent hover:border-slate-200"
-          >
-            Cancelar
-          </Link>
-          <button
-            type="submit" disabled={isSaving}
-            className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-2.5 rounded-lg font-medium transition-colors disabled:opacity-50 shadow-sm flex items-center gap-2"
-          >
-            {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <User className="w-4 h-4"/>}
-            {isSaving ? 'Guardando...' : 'Guardar Cambios'}
-          </button>
-        </div>
+        {/* ── BOTÓN SUBMIT ── */}
+        <button
+          type="submit"
+          disabled={isSaving}
+          className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white font-bold py-3.5 px-4 rounded-xl transition-colors flex items-center justify-center gap-2"
+        >
+          {isSaving ? (
+            <><Loader2 className="w-5 h-5 animate-spin" /> Creando credenciales...</>
+          ) : (
+            <><User className="w-5 h-5" /> Crear Credenciales</>
+          )}
+        </button>
       </form>
     </div>
   )

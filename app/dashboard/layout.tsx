@@ -3,6 +3,7 @@ import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import EmergencyNotifier from './components/EmergencyNotifier'
+import WelcomeBanner from './components/WelcomeBanner'
 
 
 export default async function DashboardLayout({
@@ -74,8 +75,9 @@ export default async function DashboardLayout({
       {/* Main Content */}
       <main className="flex-1 flex flex-col overflow-hidden relative">
         <EmergencyNotifier />
-        <header className="bg-white shadow-sm h-16 flex items-center px-6">
+        <header className="bg-white shadow-sm h-16 flex items-center justify-between px-6">
           <h1 className="text-xl font-semibold text-gray-800">Call Center</h1>
+          <WelcomeBanner />
         </header>
         <div className="flex-1 overflow-auto p-6">
           {children}

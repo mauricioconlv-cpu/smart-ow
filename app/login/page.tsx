@@ -1,81 +1,99 @@
+'use client'
+
 import { login } from './actions'
-import { Truck } from 'lucide-react'
+import { Truck, Phone, Lock } from 'lucide-react'
 import Link from 'next/link'
 
-export default async function LoginPage({
+export default function LoginPage({
   searchParams,
 }: {
-  searchParams: Promise<{ message?: string }>
+  searchParams: { message?: string }
 }) {
-  const { message } = await searchParams
+  const message = searchParams?.message
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gray-50 px-4 py-12 sm:px-6 lg:px-8">
-      <div className="w-full max-w-md space-y-8 bg-white p-8 rounded-2xl shadow-xl">
+    <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-slate-900 via-blue-950 to-slate-900 px-4 py-12 sm:px-6 lg:px-8">
+      <div className="w-full max-w-md space-y-8">
+
+        {/* Logo y título */}
         <div className="flex flex-col items-center">
-          <div className="flex h-16 w-16 items-center justify-center rounded-full bg-blue-600">
-            <Truck className="h-8 w-8 text-white" />
+          <div className="flex h-20 w-20 items-center justify-center rounded-2xl bg-blue-600 shadow-lg shadow-blue-500/30">
+            <Truck className="h-10 w-10 text-white" />
           </div>
-          <h2 className="mt-6 text-center text-3xl font-bold tracking-tight text-gray-900">
+          <h2 className="mt-6 text-center text-3xl font-bold tracking-tight text-white">
             Smart Tow
           </h2>
-          <p className="mt-2 text-center text-sm text-gray-600">
+          <p className="mt-2 text-center text-sm text-blue-300">
             Sistema Inteligente de Gestión de Grúas
           </p>
         </div>
 
-        {message && (
-          <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm text-center">
-            ⚠️ {decodeURIComponent(message)}
-          </div>
-        )}
+        {/* Card del formulario */}
+        <div className="bg-white/10 backdrop-blur-md border border-white/20 rounded-2xl shadow-xl p-8">
 
-        <form className="mt-8 space-y-6" action={login}>
-
-          <div className="space-y-4 rounded-md shadow-sm">
-            <div>
-              <label htmlFor="email-address" className="sr-only">
-                Correo Electrónico
-              </label>
-              <input
-                id="email-address"
-                name="email"
-                type="email"
-                autoComplete="email"
-                required
-                className="relative block w-full rounded-md border-0 py-2.5 text-gray-900 ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:z-10 focus:ring-2 focus:ring-inset focus:ring-blue-600 sm:text-sm sm:leading-6 px-3"
-                placeholder="Correo Electrónico"
-              />
+          {message && (
+            <div className="mb-6 bg-red-500/20 border border-red-400/40 text-red-200 px-4 py-3 rounded-lg text-sm text-center">
+              ⚠️ {decodeURIComponent(message)}
             </div>
+          )}
+
+          <form className="space-y-5" action={login}>
+
+            {/* Campo Teléfono */}
             <div>
-              <label htmlFor="password" className="sr-only">
+              <label htmlFor="phone" className="block text-sm font-medium text-blue-200 mb-2">
+                Número de Teléfono
+              </label>
+              <div className="relative">
+                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                  <Phone className="h-4 w-4 text-slate-400" />
+                </div>
+                <input
+                  id="phone"
+                  name="phone"
+                  type="tel"
+                  autoComplete="tel"
+                  required
+                  className="block w-full pl-10 pr-4 py-3 bg-white/10 border border-white/20 rounded-lg text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                  placeholder="Ej. 5512345678"
+                />
+              </div>
+            </div>
+
+            {/* Campo Contraseña */}
+            <div>
+              <label htmlFor="password" className="block text-sm font-medium text-blue-200 mb-2">
                 Contraseña
               </label>
-              <input
-                id="password"
-                name="password"
-                type="password"
-                autoComplete="current-password"
-                required
-                className="relative block w-full rounded-md border-0 py-2.5 text-gray-900 ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:z-10 focus:ring-2 focus:ring-inset focus:ring-blue-600 sm:text-sm sm:leading-6 px-3"
-                placeholder="Contraseña"
-              />
+              <div className="relative">
+                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                  <Lock className="h-4 w-4 text-slate-400" />
+                </div>
+                <input
+                  id="password"
+                  name="password"
+                  type="password"
+                  autoComplete="current-password"
+                  required
+                  className="block w-full pl-10 pr-4 py-3 bg-white/10 border border-white/20 rounded-lg text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                  placeholder="Tu contraseña"
+                />
+              </div>
             </div>
-          </div>
 
-          <div>
+            {/* Botón de ingreso */}
             <button
               type="submit"
-              className="group relative flex w-full justify-center rounded-md bg-blue-600 px-3 py-2.5 text-sm font-semibold text-white hover:bg-blue-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 transition-colors"
+              className="w-full flex justify-center py-3 px-4 border border-transparent rounded-lg shadow-sm text-sm font-semibold text-white bg-blue-600 hover:bg-blue-500 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-all duration-200 mt-2"
             >
               Iniciar Sesión
             </button>
-          </div>
-        </form>
+          </form>
+        </div>
 
-        <p className="text-center text-sm text-slate-500">
+        <p className="text-center text-sm text-slate-400">
           ¿Primera vez en Smart Tow?{' '}
-          <Link href="/register" className="font-semibold text-blue-600 hover:text-blue-800">
+          <Link href="/register" className="font-semibold text-blue-400 hover:text-blue-300 transition-colors">
             Registra tu empresa →
           </Link>
         </p>
@@ -83,4 +101,3 @@ export default async function LoginPage({
     </div>
   )
 }
-
