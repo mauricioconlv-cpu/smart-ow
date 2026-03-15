@@ -43,6 +43,10 @@ export default function NewServicePage() {
   const [requierePasoCorriente, setRequierePasoCorriente] = useState(false)
   const [herramientasUsadas, setHerramientasUsadas] = useState<string[]>([])
 
+  // ETA del operador al origen
+  const [etaMinutes, setEtaMinutes] = useState<number | null>(null)
+  const [distTruckToOrigin, setDistTruckToOrigin] = useState<number | null>(null)
+
   useEffect(() => {
     async function loadData() {
       const { data: cData } = await supabase
@@ -64,6 +68,29 @@ export default function NewServicePage() {
       prev.includes(val) ? prev.filter(h => h !== val) : [...prev, val]
     )
   }
+
+  // Haversine: distancia en km entre dos coordenadas GPS
+  const haversineKm = (lat1: number, lng1: number, lat2: number, lng2: number) => {
+    const R = 6371
+    const dLat = (lat2 - lat1) * Math.PI / 180
+    const dLng = (lng2 - lng1) * Math.PI / 180
+    const a = Math.sin(dLat/2)**2 + Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLng/2)**2
+    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a))
+  }
+
+  // Recalcular ETA cada vez que cambia la grúa o el origen geocodificado
+  useEffect(() => {
+    const truck = towTrucks.find(t => t.id === selectedTruck)
+    if (!truck || !truck.current_lat || !truck.current_lng || !originLatLng) {
+      setEtaMinutes(null)
+      setDistTruckToOrigin(null)
+      return
+    }
+    const dist = haversineKm(truck.current_lat, truck.current_lng, originLatLng.lat, originLatLng.lng)
+    setDistTruckToOrigin(Math.round(dist * 10) / 10)
+    // Velocidad promedio urbana 40 km/h → minutos
+    setEtaMinutes(Math.round((dist / 40) * 60))
+  }, [selectedTruck, originLatLng, towTrucks])
 
   // Motor de cotización inteligente
   useEffect(() => {
@@ -172,28 +199,33 @@ export default function NewServicePage() {
         .eq('tow_truck_id', selectedTruck)
         .single()
 
+      // PASO 1: INSERT con solo columnas ORIGINAL conocidas por PostgREST
       const { data: newService, error: serviceError } = await supabase
         .from('services')
         .insert({
-          company_id:             profile.company_id,
-          client_id:              selectedClient,
-          operator_id:            operatorProfile?.id ?? null,
-          tipo_servicio:          tipoServicio,
-          distancia_km:           distanciaAproximada,
-          costo_calculado:        costoCalculado,
-          origen_coords:          originLatLng ? { lat: originLatLng.lat, lng: originLatLng.lng } : null,
-          destino_coords:         destLatLng   ? { lat: destLatLng.lat,   lng: destLatLng.lng   } : null,
-          numero_expediente:      numeroExpediente || null,
-          requiere_maniobra:      requiereManiobra,
-          requiere_paso_corriente: requierePasoCorriente,
-          herramientas_usadas:    herramientasUsadas,
-          costo_desglose:         costoDesglose,
-          status:                 'creado'
+          company_id:    profile.company_id,
+          client_id:     selectedClient,
+          operator_id:   operatorProfile?.id ?? null,
+          tipo_servicio: tipoServicio,
+          distancia_km:  distanciaAproximada,
+          costo_calculado: costoCalculado,
+          origen_coords: originLatLng  ? { lat: originLatLng.lat,  lng: originLatLng.lng }  : null,
+          destino_coords: destLatLng   ? { lat: destLatLng.lat,    lng: destLatLng.lng }    : null,
+          status: 'creado'
         })
         .select('id')
         .single()
 
       if (serviceError) throw new Error(serviceError.message)
+
+      // PASO 2: UPDATE con las columnas nuevas (evita schema cache issue en INSERT)
+      await supabase.from('services').update({
+        numero_expediente:      numeroExpediente || null,
+        requiere_maniobra:      requiereManiobra,
+        requiere_paso_corriente: requierePasoCorriente,
+        herramientas_usadas:    herramientasUsadas,
+        costo_desglose:         costoDesglose,
+      }).eq('id', newService.id)
 
       window.location.href = `/dashboard/services/${newService.id}/capture`
     } catch (err: any) {
@@ -323,17 +355,40 @@ export default function NewServicePage() {
                   ))}
                 </select>
                 {selectedTruckData && (
-                  <div className="mt-2 flex flex-wrap gap-2 text-xs">
-                    {selectedTruckData.unit_type && (
-                      <span className="bg-blue-100 text-blue-700 px-2 py-0.5 rounded font-semibold">
-                        {UNIT_TYPE_LABEL[selectedTruckData.unit_type]}
-                      </span>
+                  <div className="mt-3 space-y-2">
+                    <div className="flex flex-wrap gap-2 text-xs">
+                      {selectedTruckData.unit_type && (
+                        <span className="bg-blue-100 text-blue-700 px-2 py-0.5 rounded font-semibold">
+                          {UNIT_TYPE_LABEL[selectedTruckData.unit_type]}
+                        </span>
+                      )}
+                      {(selectedTruckData.tools || []).map((t: string) => (
+                        <span key={t} className="bg-green-100 text-green-700 px-2 py-0.5 rounded font-semibold capitalize">
+                          {t.replace('_', ' ')}
+                        </span>
+                      ))}
+                    </div>
+
+                    {/* ETA del operador al origen */}
+                    {etaMinutes !== null && distTruckToOrigin !== null ? (
+                      <div className="flex items-center gap-2 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                        <span className="text-xl">🚨</span>
+                        <div>
+                          <p className="text-xs font-bold text-amber-800">Tiempo Estimado de Arribo al Origen</p>
+                          <p className="text-sm font-black text-amber-900">
+                            {etaMinutes < 60
+                              ? `~${etaMinutes} min`
+                              : `~${Math.floor(etaMinutes/60)}h ${etaMinutes%60}min`
+                            }
+                            <span className="text-xs font-normal text-amber-600 ml-2">({distTruckToOrigin} km en línea recta)</span>
+                          </p>
+                        </div>
+                      </div>
+                    ) : selectedTruckData.current_lat ? (
+                      <p className="text-xs text-slate-400 italic">Geocodifica el origen para ver el ETA del operador.</p>
+                    ) : (
+                      <p className="text-xs text-orange-500">⚠️ Grúa sin coordenadas GPS — ETA no disponible.</p>
                     )}
-                    {(selectedTruckData.tools || []).map((t: string) => (
-                      <span key={t} className="bg-green-100 text-green-700 px-2 py-0.5 rounded font-semibold capitalize">
-                        {t.replace('_', ' ')}
-                      </span>
-                    ))}
                   </div>
                 )}
                 <p className="mt-2 text-xs text-slate-500">Al seleccionar una Grúa, el sistema cargará su tipo y herramientas disponibles.</p>

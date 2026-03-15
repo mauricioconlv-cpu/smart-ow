@@ -1,11 +1,13 @@
 -- ============================================================
--- SOLUCIÓN DEFINITIVA: Bootstrap de pricing_rules
+-- SOLUCIÓN DEFINITIVA: Agregar 'general' al enum y seed de pricing_rules
 -- EJECUTAR EN SUPABASE SQL EDITOR (proyecto correcto)
--- Es seguro ejecutar varias veces
 -- ============================================================
 
--- 1. CREAR pricing_rules para todos los clientes que aún no tienen una
---    (incluye axa, Cliente, ike, y cualquier otro que falte)
+-- 1. Agregar el valor 'general' al ENUM rule_type
+--    (IF NOT EXISTS disponible desde PostgreSQL 9.3)
+ALTER TYPE rule_type ADD VALUE IF NOT EXISTS 'general';
+
+-- 2. Crear pricing_rules para todos los clientes que no tienen ninguna
 INSERT INTO public.pricing_rules (client_id, company_id, tipo, costo_base, costo_km)
 SELECT c.id, c.company_id, 'general', 0, 0
 FROM public.clients c
@@ -13,8 +15,7 @@ WHERE NOT EXISTS (
   SELECT 1 FROM public.pricing_rules pr WHERE pr.client_id = c.id
 );
 
--- 2. TRIGGER: cuando se crea un cliente nuevo, crea automáticamente
---    su pricing_rule vacía. Así el app NUNCA necesita hacer INSERT.
+-- 3. Trigger: crea pricing_rule automáticamente para nuevos clientes
 CREATE OR REPLACE FUNCTION public.fn_create_default_pricing_rule()
 RETURNS TRIGGER
 LANGUAGE plpgsql
@@ -34,7 +35,7 @@ CREATE TRIGGER trg_create_pricing_rule
   FOR EACH ROW
   EXECUTE FUNCTION public.fn_create_default_pricing_rule();
 
--- 3. Verificar que todo quedó bien
+-- 4. Verificar que quedó bien (debes ver axa, Cliente, ike con tipo=general)
 SELECT c.name, pr.tipo, pr.costo_base
 FROM public.clients c
 LEFT JOIN public.pricing_rules pr ON pr.client_id = c.id
