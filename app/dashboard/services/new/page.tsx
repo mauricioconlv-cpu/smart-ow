@@ -76,48 +76,70 @@ export default function NewServicePage() {
     const clientData = clients.find(c => c.id === selectedClient)
     if (!clientData) return
 
-    const rule = clientData.pricing_rules.find((r: any) => r.tipo === tipoServicio)
-    if (!rule) {
-      setCostoCalculado(0)
-      setCostoDesglose({})
-      return
-    }
+    // ── Detectar si el cliente usa el NUEVO formato (tipo='general') o el VIEJO (tipo='local'/'foraneo') ──
+    const generalRule = clientData.pricing_rules.find((r: any) => r.tipo === 'general')
+    const legacyRule  = clientData.pricing_rules.find((r: any) => r.tipo === tipoServicio)
 
     const truck = towTrucks.find(t => t.id === selectedTruck)
     const desglose: Record<string, number> = {}
 
-    // 1. Costo base de arrastre
-    if (tipoServicio === 'local') {
-      desglose.arrastre_base = Number(rule.costo_base)
+    if (generalRule) {
+      // ─── NUEVO FORMATO: costos individuales por tipo de grúa ───────────────
+      const unitType = truck?.unit_type?.toLowerCase() ?? 'a'  // default tipo A
+
+      if (tipoServicio === 'local') {
+        const costoLocal = Number(generalRule[`costo_local_tipo_${unitType}`] || 0)
+        if (costoLocal > 0) desglose.arrastre_base = costoLocal
+      } else {
+        const banderazo = Number(generalRule[`costo_bande_tipo_${unitType}`] || 0)
+        const costoPorKm = Number(generalRule[`costo_km_tipo_${unitType}`] || 0)
+        if (banderazo > 0) desglose.banderazo = banderazo
+        if (costoPorKm > 0 && distanciaAproximada > 0) desglose.km = distanciaAproximada * costoPorKm
+      }
+
+      // Costos adicionales (aplican igual para ambos tipos de servicio)
+      if (requiereManiobra && Number(generalRule.costo_maniobra) > 0)
+        desglose.maniobra = Number(generalRule.costo_maniobra)
+
+      if (requierePasoCorriente && Number(generalRule.costo_hora_espera) > 0)
+        desglose.paso_corriente = Number(generalRule.costo_hora_espera)
+
+      for (const herr of herramientasUsadas) {
+        const val = Number(generalRule[`costo_${herr}`] || 0)
+        if (val > 0) desglose[herr] = val
+      }
+
+    } else if (legacyRule) {
+      // ─── FORMATO ANTIGUO: costo_base y costo_km ───────────────────────────
+      if (tipoServicio === 'local') {
+        desglose.arrastre_base = Number(legacyRule.costo_base)
+      } else {
+        desglose.banderazo = Number(legacyRule.costo_base)
+        desglose.km = distanciaAproximada * Number(legacyRule.costo_km)
+      }
+
+      if (truck?.unit_type) {
+        const costoTipoKey = `costo_tipo_${truck.unit_type.toLowerCase()}`
+        const costoTipo = Number(legacyRule[costoTipoKey] || 0)
+        if (costoTipo > 0) desglose[`grua_tipo_${truck.unit_type}`] = costoTipo
+      }
+
+      if (requiereManiobra && Number(legacyRule.costo_maniobra) > 0)
+        desglose.maniobra = Number(legacyRule.costo_maniobra)
+
+      if (requierePasoCorriente && Number(legacyRule.costo_hora_espera) > 0)
+        desglose.paso_corriente = Number(legacyRule.costo_hora_espera)
+
+      for (const herr of herramientasUsadas) {
+        const val = Number(legacyRule[`costo_${herr}`] || 0)
+        if (val > 0) desglose[herr] = val
+      }
+
     } else {
-      desglose.banderazo = Number(rule.costo_base)
-      desglose.km = distanciaAproximada * Number(rule.costo_km)
-    }
-
-    // 2. Costo por tipo de grúa
-    if (truck?.unit_type) {
-      const costoTipoKey = `costo_tipo_${truck.unit_type.toLowerCase()}`
-      const costoTipo = Number(rule[costoTipoKey] || 0)
-      if (costoTipo > 0) desglose[`grua_tipo_${truck.unit_type}`] = costoTipo
-    }
-
-    // 3. Maniobra
-    if (requiereManiobra && rule.costo_maniobra > 0) {
-      desglose.maniobra = Number(rule.costo_maniobra)
-    }
-
-    // 4. Paso de corriente (jumper) — si el cliente tiene un costo de maniobra/hora específico
-    // Usamos el mismo campo de maniobra para paso de corriente como costo simbólico
-    // (se puede diferenciar si se agrega campo separado en el futuro)
-    if (requierePasoCorriente && rule.costo_hora_espera > 0) {
-      desglose.paso_corriente = Number(rule.costo_hora_espera)
-    }
-
-    // 5. Herramientas usadas
-    for (const herr of herramientasUsadas) {
-      const field = `costo_${herr}`
-      const val = Number(rule[field] || 0)
-      if (val > 0) desglose[herr] = val
+      // Sin tarifas configuradas
+      setCostoCalculado(0)
+      setCostoDesglose({})
+      return
     }
 
     const total = Object.values(desglose).reduce((a, b) => a + b, 0)
