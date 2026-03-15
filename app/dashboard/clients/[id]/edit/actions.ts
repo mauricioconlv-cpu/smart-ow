@@ -4,15 +4,15 @@ import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 
-export async function updateClientWithRates(formData: FormData) {
+export async function updateClientWithRates(formData: FormData): Promise<void> {
   const supabase = await createClient()
 
   const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return { error: 'No autorizado' }
+  if (!user) redirect('/login')
 
   const clientId   = formData.get('clientId') as string
   const clientName = formData.get('name') as string
-  if (!clientId) return { error: 'ID de cliente no encontrado' }
+  if (!clientId) return
 
   const tipoFields = ['a', 'b', 'c', 'd']
   const costs: Record<string, number> = {}
@@ -36,8 +36,7 @@ export async function updateClientWithRates(formData: FormData) {
   }
 
   // 1. Actualizar nombre
-  const { error: nameErr } = await supabase.from('clients').update({ name: clientName }).eq('id', clientId)
-  if (nameErr) return { error: nameErr.message }
+  await supabase.from('clients').update({ name: clientName }).eq('id', clientId)
 
   // 2. Verificar si existen reglas de pricing
   const { data: existingRules } = await supabase
@@ -48,7 +47,12 @@ export async function updateClientWithRates(formData: FormData) {
   if (existingRules && existingRules.length > 0) {
     await supabase.from('pricing_rules').update(costs).eq('client_id', clientId)
   } else {
-    const { data: profile } = await supabase.from('profiles').select('company_id').eq('id', user.id).single()
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('company_id')
+      .eq('id', user.id)
+      .single()
+
     await supabase.from('pricing_rules').insert({
       client_id:  clientId,
       company_id: profile?.company_id,
