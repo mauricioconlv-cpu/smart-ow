@@ -12,7 +12,7 @@ export default function PlateGate({ operatorName, avatarUrl }: PlateGateProps) {
   const [plates, setPlates] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState('')
-  const [success, setSuccess] = useState<{ unit_number: string; plates: string; brand: string; model: string } | null>(null)
+  const [success, setSuccess] = useState<{ economic_number: string; plates: string; brand: string; model: string } | null>(null)
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -165,7 +165,7 @@ export default function PlateGate({ operatorName, avatarUrl }: PlateGateProps) {
               </div>
               <div>
                 <p style={{ color: '#4ade80', fontWeight: 700, fontSize: 18 }}>¡Unidad Vinculada!</p>
-                <p className="text-white font-bold text-2xl mt-1">{success.unit_number}</p>
+                <p className="text-white font-bold text-2xl mt-1">{success.economic_number}</p>
                 <p style={{ color: 'rgba(148,163,184,0.8)', fontSize: 13 }}>{success.brand} {success.model} · {success.plates}</p>
               </div>
               <p style={{ color: 'rgba(100,116,139,0.8)', fontSize: 12 }}>Cargando tu panel de operador...</p>

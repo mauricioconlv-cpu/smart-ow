@@ -1,9 +1,11 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import dynamic from 'next/dynamic'
+import Link from 'next/link'
+import { MapPin, ArrowRight } from 'lucide-react'
 
-// All browser-only imports go through dynamic() here in the CLIENT component
+// All browser-only components loaded dynamically with ssr:false
 const PlateGate           = dynamic(() => import('./PlateGate'),           { ssr: false })
 const OperatorTracker     = dynamic(() => import('./OperatorTracker'),      { ssr: false })
 const DownloadPDFButton   = dynamic(() => import('./DownloadPDFButton'),    { ssr: false })
@@ -17,101 +19,109 @@ interface Truck {
   plates: string
 }
 
-interface Props {
-  operatorId: string
-  operatorName: string
-  avatarUrl: string | null
-  truck: Truck | null
-  services: any[]
-  children: React.ReactNode
+const STATUS_MAP: Record<string, string> = {
+  creado:             'Nuevo Asignado',
+  rumbo_contacto:     'En camino al Origen',
+  arribo_origen:      'En Sitio',
+  contacto:           'Maniobra / Enganche',
+  inicio_traslado:    'En Traslado a Destino',
+  traslado_concluido: 'Descargando...',
 }
 
-/**
- * OperatorClientLayer — client component that:
- * 1. Shows PlateGate if no truck is linked (re-checks on client in case SSR was stale)
- * 2. Shows GPS tracker + dashboard when truck is linked
- * 3. Renders DownloadPDFButton for closed services (browser-only)
- */
-export default function OperatorClientLayer({
-  operatorId,
-  operatorName,
-  avatarUrl,
-  truck: initialTruck,
-  services,
-  children,
-}: Props) {
-  const [truck, setTruck] = useState<Truck | null>(initialTruck)
-  const [checked, setChecked] = useState(!!initialTruck)
+export default function OperatorClientLayer() {
+  const [operatorId, setOperatorId]   = useState<string | null>(null)
+  const [operatorName, setOperatorName] = useState('Operador')
+  const [avatarUrl, setAvatarUrl]     = useState<string | null>(null)
+  const [truck, setTruck]             = useState<Truck | null>(null)
+  const [services, setServices]       = useState<any[]>([])
+  const [loading, setLoading]         = useState(true)
+  const [dbError, setDbError]         = useState<string | null>(null)
 
   useEffect(() => {
-    // If server already confirmed truck, skip re-check
-    if (initialTruck) {
-      setTruck(initialTruck)
-      setChecked(true)
-      return
-    }
-    // Server had no truck — re-check on client (session might be fresher)
     ;(async () => {
       try {
         const { createClient } = await import('@/lib/supabase/client')
         const supabase = createClient()
 
-        const { data: profileData } = await supabase
+        // Auth check
+        const { data: { user } } = await supabase.auth.getUser()
+        if (!user) { window.location.href = '/login'; return }
+
+        setOperatorId(user.id)
+
+        // Profile
+        const { data: prof, error: profErr } = await supabase
           .from('profiles')
-          .select('tow_truck_id')
-          .eq('id', operatorId)
+          .select('id, full_name, avatar_url, tow_truck_id, role')
+          .eq('id', user.id)
           .single()
 
-        if (!profileData?.tow_truck_id) {
-          setTruck(null)
-          setChecked(true)
-          return
+        if (profErr) { setDbError('Error perfil: ' + profErr.message); setLoading(false); return }
+        if (!prof)   { setDbError('Perfil no encontrado.'); setLoading(false); return }
+
+        setOperatorName(prof.full_name ?? 'Operador')
+        setAvatarUrl(prof.avatar_url ?? null)
+
+        // Truck
+        if (prof.tow_truck_id) {
+          const { data: truckData } = await supabase
+            .from('tow_trucks')
+            .select('id, economic_number, brand, model, plates')
+            .eq('id', prof.tow_truck_id)
+            .single()
+          if (truckData) setTruck(truckData)
         }
 
-        const { data: truckData } = await supabase
-          .from('tow_trucks')
-          .select('id, economic_number, brand, model, plates')
-          .eq('id', profileData.tow_truck_id)
-          .single()
+        // Services
+        const { data: svcData } = await supabase
+          .from('services')
+          .select('id, folio, status, created_at, costo_calculado, calidad_estrellas, firma_url, tipo_servicio, origen_coords, destino_coords, comentarios_calidad, clients(name)')
+          .eq('operator_id', user.id)
+          .order('created_at', { ascending: false })
+          .limit(20)
+        if (svcData) setServices(svcData)
 
-        setTruck(truckData || null)
-        setChecked(true)
-      } catch {
-        setChecked(true)
+      } catch (e: any) {
+        setDbError(e.message || 'Error inesperado.')
+      } finally {
+        setLoading(false)
       }
     })()
-  }, [operatorId, initialTruck])
+  }, [])
 
-  // Loading spinner (only when no server data available)
-  if (!checked) {
+  // ── Loading
+  if (loading) {
     return (
-      <div style={{
-        minHeight: '100vh', display: 'flex', flexDirection: 'column',
-        alignItems: 'center', justifyContent: 'center',
-        background: 'linear-gradient(160deg, #060b18 0%, #0d1530 60%, #0a0f20 100%)'
-      }}>
-        <div style={{
-          width: 40, height: 40, borderRadius: '50%',
-          border: '4px solid rgba(59,130,246,0.3)', borderTopColor: '#3b82f6',
-          animation: 'spin 0.8s linear infinite'
-        }} />
-        <p style={{ color: 'rgba(148,163,184,0.7)', fontSize: 14, marginTop: 12 }}>Cargando...</p>
+      <div style={{ minHeight:'100vh', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', background:'linear-gradient(160deg,#060b18 0%,#0d1530 60%,#0a0f20 100%)' }}>
+        <div style={{ width:40, height:40, borderRadius:'50%', border:'4px solid rgba(59,130,246,0.3)', borderTopColor:'#3b82f6', animation:'spin 0.8s linear infinite' }} />
+        <p style={{ color:'rgba(148,163,184,0.7)', fontSize:14, marginTop:12 }}>Cargando...</p>
+        <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
       </div>
     )
   }
 
-  // No truck — show plate gate
+  // ── Error
+  if (dbError) {
+    return (
+      <div style={{ minHeight:'100vh', display:'flex', alignItems:'center', justifyContent:'center', background:'#0d1530', padding:20 }}>
+        <p style={{ color:'#fca5a5', fontFamily:'monospace', textAlign:'center' }}>{dbError}</p>
+      </div>
+    )
+  }
+
+  // ── No truck → plate gate
   if (!truck) {
     return <PlateGate operatorName={operatorName} avatarUrl={avatarUrl} />
   }
 
-  // Truck confirmed — dashboard
+  // ── Dashboard
   return (
-    <div className="p-4 space-y-6 pb-24">
-      {/* GPS tracker (invisible) */}
-      <OperatorTracker operatorId={operatorId} truckId={truck.id} />
+    <div className="p-4 space-y-6 pb-24" style={{ background:'linear-gradient(160deg,#060b18 0%,#0d1530 60%,#0a0f20 100%)', minHeight:'100vh' }}>
 
-      {/* Truck banner with end-shift button */}
+      {/* Invisible GPS tracker */}
+      {operatorId && <OperatorTracker operatorId={operatorId} truckId={truck.id} />}
+
+      {/* Assigned truck banner */}
       <AssignedTruckBanner
         economic_number={truck.economic_number}
         plates={truck.plates}
@@ -119,18 +129,67 @@ export default function OperatorClientLayer({
         model={truck.model ?? ''}
       />
 
-      {/* Server-rendered service header + cards */}
-      {children}
+      {/* Services header */}
+      <div className="bg-white rounded-2xl shadow-sm p-5 border border-gray-100">
+        <h2 className="text-xl font-bold text-slate-800">Mis Servicios Activos</h2>
+        <p className="text-sm text-slate-500 mt-1">Atiende los folios pendientes en orden.</p>
+      </div>
 
-      {/* PDF download buttons for closed services (browser-only) */}
-      {services
-        .filter(s => s.status === 'servicio_cerrado')
-        .map(s => (
-          <div key={`pdf-${s.id}`} className="-mt-2 px-0">
-            <DownloadPDFButton service={s} />
+      {/* Service cards */}
+      {services.length === 0 ? (
+        <div className="text-center py-12 bg-white rounded-2xl border border-dashed border-gray-300">
+          <div className="inline-flex h-12 w-12 items-center justify-center rounded-full bg-slate-100 mb-4">
+            <MapPin className="h-6 w-6 text-slate-400" />
           </div>
-        ))
-      }
+          <p className="text-slate-500 font-medium">Libre. Sin servicios asignados.</p>
+        </div>
+      ) : (
+        <div className="space-y-4">
+          {services.map(s => (
+            <div key={s.id} className="bg-white rounded-2xl p-5 shadow-sm border-l-4 border-blue-500 flex flex-col gap-4">
+              <div className="flex justify-between items-start">
+                <div>
+                  <span className={`text-xs font-bold px-2 py-1 rounded-md mb-2 inline-block ${s.status === 'servicio_cerrado' ? 'bg-green-100 text-green-700' : 'bg-blue-50 text-blue-600'}`}>
+                    FOLIO: #{s.folio}
+                  </span>
+                  <h3 className="font-bold text-gray-900 text-lg leading-tight">
+                    {(s.clients as any)?.name}
+                  </h3>
+                </div>
+                <div className="text-right">
+                  <span className="block text-xs text-gray-400 font-medium">ESTADO</span>
+                  <span className={`block text-sm font-bold ${s.status === 'servicio_cerrado' ? 'text-green-600' : 'text-slate-700'}`}>
+                    {STATUS_MAP[s.status] ?? s.status}
+                  </span>
+                </div>
+              </div>
+              {s.status !== 'servicio_cerrado' && (
+                <Link
+                  href={`/operator/service/${s.id}`}
+                  className="mt-2 w-full flex items-center justify-center gap-2 bg-slate-900 hover:bg-slate-800 text-white font-medium py-3 px-4 rounded-xl transition-colors"
+                >
+                  <span>Ver Detalles del Servicio</span>
+                  <ArrowRight className="h-5 w-5" />
+                </Link>
+              )}
+              {s.status === 'servicio_cerrado' && (
+                <DownloadPDFButton service={s} />
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* SOS button */}
+      <div style={{ position:'fixed', bottom:24, right:20, zIndex:50 }}>
+        <button
+          onClick={() => alert('SOS enviado. Coordinador notificado.')}
+          style={{ width:56, height:56, borderRadius:'50%', background:'linear-gradient(135deg,#ef4444,#dc2626)', border:'none', color:'white', fontWeight:900, fontSize:11, cursor:'pointer', boxShadow:'0 4px 20px rgba(239,68,68,0.5)', letterSpacing:'0.03em' }}
+        >
+          S.O.S
+        </button>
+      </div>
+
     </div>
   )
 }
