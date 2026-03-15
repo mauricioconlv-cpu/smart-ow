@@ -57,8 +57,8 @@ export async function registerCompany(prevState: any, formData: FormData) {
   const supabaseAdmin = createAdminClient()
 
   try {
-    // 1. Crear la empresa
-    const { data: company, error: companyErr } = await supabase
+    // 1. Crear la empresa (usar admin client para evitar bloqueo de RLS antes de que exista sesión)
+    const { data: company, error: companyErr } = await supabaseAdmin
       .from('companies')
       .insert({ name: companyName })
       .select('id')
@@ -76,8 +76,8 @@ export async function registerCompany(prevState: any, formData: FormData) {
     })
 
     if (authErr || !authData.user) {
-      // Limpiar empresa creada
-      await supabase.from('companies').delete().eq('id', company.id)
+      // Limpiar empresa creada (admin client para poder borrar sin sesión)
+      await supabaseAdmin.from('companies').delete().eq('id', company.id)
       return { error: `Error al crear cuenta: ${authErr?.message ?? 'desconocido'}` }
     }
 
