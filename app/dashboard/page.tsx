@@ -30,8 +30,8 @@ export default function LiveMonitorPage() {
       const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString()
       const { data: tw } = await supabase
         .from('tow_trucks')
-        .select('id, unit_number, unit_type, current_location, updated_at, profiles(full_name)')
-        .gt('updated_at', twoHoursAgo)
+        .select('id, economic_number, current_location, last_location_update, profiles(full_name)')
+        .gt('last_location_update', twoHoursAgo)
         .not('current_location', 'is', null)
       if (tw) setTrucks(tw)
 
@@ -115,7 +115,7 @@ export default function LiveMonitorPage() {
             {trucks.map(tw => (
               <PersonnelRow
                 key={tw.id}
-                name={`${tw.unit_number}${tw.unit_type ? ` (Tipo ${tw.unit_type})` : ''}`}
+                name={`${tw.economic_number}${tw.unit_type ? ` (Tipo ${tw.unit_type})` : ''}`}
                 sub={(tw.profiles as any)?.full_name ?? 'Sin operador'}
                 online={true}
                 icon="truck"
