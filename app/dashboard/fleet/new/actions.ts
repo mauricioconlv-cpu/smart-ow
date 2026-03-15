@@ -33,6 +33,7 @@ export async function addTowTruck(prevState: any, formData: FormData) {
       plates:          formData.get('plates') as string,
       unit_type:       (formData.get('unit_type') as string) || null,
       tools:           tools,
+      photo_url:       (formData.get('photo_url') as string) || null,
     }
   })
 

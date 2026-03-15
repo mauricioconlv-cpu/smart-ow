@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import dynamic from 'next/dynamic'
-import { MapPin, Truck, Radio, Users, Circle } from 'lucide-react'
+import { MapPin, Truck, Radio, Users } from 'lucide-react'
 
 const LiveMap = dynamic(() => import('./components/Map'), {
   ssr: false,
@@ -23,7 +23,7 @@ export default function LiveMonitorPage() {
       // Operadores — no filtramos por updated_at (no existe), mostramos todos los que tengan role='operator'
       const { data: ops, error: opsError } = await supabase
         .from('profiles')
-        .select('id, full_name, grua_asignada, created_at')
+        .select('id, full_name, grua_asignada, avatar_url, created_at')
         .eq('role', 'operator')
       if (opsError) setDbError(`Error ops: ${opsError.message}`)
       if (ops) setOperators(ops)
@@ -32,7 +32,7 @@ export default function LiveMonitorPage() {
       const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString()
       const { data: tw, error: twError } = await supabase
         .from('tow_trucks')
-        .select('id, economic_number, last_location_update, profiles(full_name)')
+        .select('id, economic_number, photo_url, last_location_update, profiles(full_name)')
         .gt('last_location_update', twoHoursAgo)
       if (twError) setDbError(prev => prev ? `${prev} | Error trucks: ${twError.message}` : `Error trucks: ${twError.message}`)
       if (tw) setTrucks(tw)
@@ -40,7 +40,7 @@ export default function LiveMonitorPage() {
       // Despachadores
       const { data: disp } = await supabase
         .from('profiles')
-        .select('id, full_name, created_at')
+        .select('id, full_name, avatar_url, created_at')
         .eq('role', 'dispatcher')
       if (disp) setDispatchers(disp)
     }
@@ -96,10 +96,10 @@ export default function LiveMonitorPage() {
               <p className="text-center text-slate-400 text-xs py-6">Sin operadores registrados</p>
             )}
             {onlineOps.map(op => (
-              <PersonnelRow key={op.id} name={op.name ?? op.full_name} sub={op.grua_asignada ? `Grúa: ${op.grua_asignada}` : 'Sin grúa asignada'} online={true} />
+              <PersonnelRow key={op.id} name={op.name ?? op.full_name} sub={op.grua_asignada ? `Grúa: ${op.grua_asignada}` : 'Sin grúa asignada'} online={true} avatarUrl={op.avatar_url} />
             ))}
             {offlineOps.map(op => (
-              <PersonnelRow key={op.id} name={op.name ?? op.full_name} sub={op.grua_asignada ? `Grúa: ${op.grua_asignada}` : 'Sin grúa asignada'} online={false} />
+              <PersonnelRow key={op.id} name={op.name ?? op.full_name} sub={op.grua_asignada ? `Grúa: ${op.grua_asignada}` : 'Sin grúa asignada'} online={false} avatarUrl={op.avatar_url} />
             ))}
           </div>
         </div>
@@ -122,6 +122,7 @@ export default function LiveMonitorPage() {
                 sub={(tw.profiles as any)?.full_name ?? 'Sin operador'}
                 online={true}
                 icon="truck"
+                avatarUrl={tw.photo_url}
               />
             ))}
           </div>
@@ -139,7 +140,7 @@ export default function LiveMonitorPage() {
               <p className="text-center text-slate-400 text-xs py-6">Sin despachadores registrados</p>
             )}
             {dispatchers.map(d => (
-              <PersonnelRow key={d.id} name={d.full_name} sub="Despachador / Call Center" online={true} />
+              <PersonnelRow key={d.id} name={d.full_name} sub="Despachador / Call Center" online={true} avatarUrl={d.avatar_url} />
             ))}
           </div>
         </div>
@@ -149,12 +150,26 @@ export default function LiveMonitorPage() {
   )
 }
 
-function PersonnelRow({ name, sub, online, icon }: { name: string, sub: string, online: boolean, icon?: string }) {
+function PersonnelRow({ name, sub, online, icon, avatarUrl }: {
+  name: string
+  sub: string
+  online: boolean
+  icon?: string
+  avatarUrl?: string | null
+}) {
   return (
     <div className={`flex items-center gap-3 px-3 py-2.5 rounded-lg ${online ? 'bg-white' : 'bg-slate-50 opacity-60'}`}>
-      <div className={`relative w-8 h-8 rounded-full flex items-center justify-center text-xs font-black ${online ? 'bg-blue-100 text-blue-700' : 'bg-slate-200 text-slate-500'}`}>
-        {name?.[0]?.toUpperCase() ?? '?'}
-        <Circle className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 fill-current ${online ? 'text-green-500' : 'text-slate-300'}`} />
+      <div className={`relative w-9 h-9 rounded-full flex-shrink-0 overflow-hidden border-2 ${online ? 'border-green-400' : 'border-slate-200'}`}>
+        {avatarUrl ? (
+          <img src={avatarUrl} alt={name} className="w-full h-full object-cover" />
+        ) : (
+          <div className={`w-full h-full flex items-center justify-center text-xs font-black ${online ? 'bg-blue-100 text-blue-700' : 'bg-slate-200 text-slate-500'}`}>
+            {icon === 'truck'
+              ? <Truck className="w-4 h-4" />
+              : (name?.[0]?.toUpperCase() ?? '?')}
+          </div>
+        )}
+        <span className={`absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full border border-white ${online ? 'bg-green-500' : 'bg-slate-300'}`} />
       </div>
       <div className="flex-1 min-w-0">
         <p className="text-sm font-semibold text-slate-800 truncate">{name}</p>

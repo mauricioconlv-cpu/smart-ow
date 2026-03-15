@@ -4,6 +4,7 @@ import { useActionState, useState } from 'react'
 import { addTowTruck } from './actions'
 import Link from 'next/link'
 import { ArrowLeft, Truck } from 'lucide-react'
+import PhotoUploader from '@/components/PhotoUploader'
 
 const UNIT_TYPES = [
   { value: 'A', label: 'Tipo A', desc: 'Menor a 3.5 ton' },
@@ -23,6 +24,7 @@ export default function NewTowTruckPage() {
   const [state, formAction, isPending] = useActionState(addTowTruck, null)
   const [selectedTools, setSelectedTools] = useState<string[]>([])
   const [selectedType, setSelectedType] = useState('')
+  const [photoUrl, setPhotoUrl] = useState('')
 
   const toggleTool = (value: string) => {
     setSelectedTools(prev =>
@@ -57,6 +59,23 @@ export default function NewTowTruckPage() {
         )}
 
         <form action={formAction} className="space-y-8">
+          {/* Hidden photo_url */}
+          <input type="hidden" name="photo_url" value={photoUrl} />
+
+          {/* Foto de la Unidad */}
+          <div className="flex items-start gap-6">
+            <PhotoUploader
+              bucket="tow-trucks"
+              folder="trucks"
+              onUpload={setPhotoUrl}
+              label="Foto de la Unidad"
+              shape="square"
+            />
+            <p className="text-xs text-slate-400 mt-8 leading-relaxed">
+              Sube una foto del vehículo.<br />Se comprimirá automáticamente a máx. 2.5 MB.
+            </p>
+          </div>
+
           {/* Bloque Identidad */}
           <div className="space-y-4">
             <h3 className="font-semibold text-slate-700 border-b pb-2">Identidad de la Unidad</h3>
