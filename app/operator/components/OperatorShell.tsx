@@ -5,24 +5,25 @@ import { createClient } from '@/lib/supabase/client'
 import PlateGate from './PlateGate'
 import OperatorTracker from './OperatorTracker'
 
+interface Truck {
+  id: string
+  unit_number: string
+  brand: string
+  model: string
+  plates: string
+}
+
 interface OperatorShellProps {
   operatorId: string
   operatorName: string
   avatarUrl: string | null
-  initialTruck: {
-    id: string
-    unit_number: string
-    brand: string
-    model: string
-    plates: string
-  } | null
+  initialTruck: Truck | null
   children: React.ReactNode
 }
 
 /**
- * OperatorShell — Manages the plate-gate flow.
- * Shows PlateGate if operator has no truck linked, 
- * shows the operator dashboard otherwise.
+ * OperatorShell — Shows PlateGate if no truck is linked, otherwise shows dashboard.
+ * Re-checks on the client to avoid stale SSR cache.
  */
 export default function OperatorShell({
   operatorId,
@@ -31,48 +32,71 @@ export default function OperatorShell({
   initialTruck,
   children,
 }: OperatorShellProps) {
-  const [truck, setTruck] = useState(initialTruck)
-  const [isLoaded, setIsLoaded] = useState(false)
+  // Start with the server-side value; re-validate on client
+  const [truck, setTruck] = useState<Truck | null>(initialTruck)
+  const [checked, setChecked] = useState(false)
 
-  // Re-check on client to avoid SSR caching the linked state
   useEffect(() => {
+    // Re-validate on client in case SSR was stale
     const supabase = createClient()
     supabase
       .from('profiles')
-      .select('tow_truck_id, tow_trucks(id, unit_number, brand, model, plates)')
+      .select('tow_truck_id')
       .eq('id', operatorId)
       .single()
-      .then(({ data }) => {
-        const linked = (data as any)?.tow_trucks || null
-        setTruck(linked)
-        setIsLoaded(true)
+      .then(async ({ data: profileData }) => {
+        if (!profileData?.tow_truck_id) {
+          setTruck(null)
+          setChecked(true)
+          return
+        }
+        // Fetch truck separately
+        const { data: truckData } = await supabase
+          .from('tow_trucks')
+          .select('id, unit_number, brand, model, plates')
+          .eq('id', profileData.tow_truck_id)
+          .single()
+
+        setTruck(truckData || null)
+        setChecked(true)
+      })
+      .catch(() => {
+        // On error, trust the server value
+        setChecked(true)
       })
   }, [operatorId])
 
-  // Waiting for client-side check
-  if (!isLoaded) {
+  // Loading state while re-checking
+  if (!checked && !initialTruck) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-900">
-        <div className="flex flex-col items-center gap-3">
-          <div className="w-10 h-10 border-4 border-blue-500 border-t-transparent rounded-full animate-spin" />
-          <p className="text-slate-400 text-sm">Cargando...</p>
-        </div>
+      <div style={{
+        minHeight: '100vh', display: 'flex', flexDirection: 'column',
+        alignItems: 'center', justifyContent: 'center',
+        background: 'linear-gradient(160deg, #060b18 0%, #0d1530 60%, #0a0f20 100%)'
+      }}>
+        <div style={{
+          width: 40, height: 40, borderRadius: '50%',
+          border: '4px solid rgba(59,130,246,0.3)', borderTopColor: '#3b82f6',
+          animation: 'spin 0.8s linear infinite'
+        }} />
+        <p style={{ color: 'rgba(148,163,184,0.7)', fontSize: 14, marginTop: 12 }}>
+          Cargando...
+        </p>
       </div>
     )
   }
 
-  // If not linked to a truck → show plate gate
+  // No truck linked → show the plate gate (PlateGate handles reload after success)
   if (!truck) {
     return (
       <PlateGate
         operatorName={operatorName}
         avatarUrl={avatarUrl}
-        onLinked={(linkedTruck) => setTruck(linkedTruck)}
       />
     )
   }
 
-  // Linked — show normal dashboard with GPS tracker running
+  // Truck linked → show GPS tracker + dashboard content
   return (
     <>
       <OperatorTracker operatorId={operatorId} truckId={truck.id} />

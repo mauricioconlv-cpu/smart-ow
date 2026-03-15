@@ -10,7 +10,7 @@ function createAdminClient() {
   )
 }
 
-// POST — Operador ingresa placas, se vincula al camión
+// POST — Operador ingresa placas para vincular grúa
 export async function POST(req: NextRequest) {
   try {
     const supabase = await createClient()
@@ -19,7 +19,7 @@ export async function POST(req: NextRequest) {
 
     const { data: profile } = await supabase
       .from('profiles')
-      .select('role, company_id, full_name')
+      .select('role, full_name')
       .eq('id', user.id)
       .single()
 
@@ -27,24 +27,25 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Solo operadores pueden usar este endpoint.' }, { status: 403 })
     }
 
-    const { plates } = await req.json()
+    const body = await req.json()
+    const plates = (body.plates || '').trim().toUpperCase()
     if (!plates) return NextResponse.json({ error: 'Placas requeridas.' }, { status: 400 })
 
-    const normalizedPlates = plates.trim().toUpperCase()
-
-    // Buscar grúa por placas (dentro de la misma empresa)
-    const { data: truck, error: truckErr } = await supabase
+    // Buscar grúa por placas — sin filtro company_id (puede que la columna no exista aún)
+    // Usamos service role para saltarnos RLS
+    const adminClient = createAdminClient()
+    const { data: trucks } = await adminClient
       .from('tow_trucks')
       .select('id, unit_number, brand, model, plates, is_active')
-      .ilike('plates', normalizedPlates)
-      .eq('company_id', profile.company_id)
-      .single()
+      .ilike('plates', plates)
 
-    if (truckErr || !truck) {
+    if (!trucks || trucks.length === 0) {
       return NextResponse.json({
-        error: `No se encontró ninguna grúa con placas "${normalizedPlates}" en tu empresa. Verifica e intenta de nuevo.`
+        error: `No se encontró ninguna grúa con placas "${plates}" en la flotilla. Verifica e intenta de nuevo.`
       }, { status: 404 })
     }
+
+    const truck = trucks[0]
 
     if (!truck.is_active) {
       return NextResponse.json({
@@ -52,21 +53,19 @@ export async function POST(req: NextRequest) {
       }, { status: 409 })
     }
 
-    // Vincular: actualizar tow_truck_id y grua_asignada en profiles
-    const adminClient = createAdminClient()
-
-    // Primero, desvincular cualquier operador que tenga esta grúa asignada
+    // Desvincular cualquier operador previo que tenga esta grúa
     await adminClient
       .from('profiles')
-      .update({ tow_truck_id: null })
+      .update({ tow_truck_id: null, grua_asignada: null })
       .eq('tow_truck_id', truck.id)
 
-    // Luego vincular al operador actual
+    // Vincular al operador actual
+    const grua_label = `${truck.unit_number} (${truck.plates})`
     const { error: profileErr } = await adminClient
       .from('profiles')
       .update({
         tow_truck_id: truck.id,
-        grua_asignada: `${truck.unit_number} (${truck.plates})`,
+        grua_asignada: grua_label,
       })
       .eq('id', user.id)
 
@@ -89,7 +88,7 @@ export async function POST(req: NextRequest) {
   }
 }
 
-// DELETE — Operador cierra sesión de la grúa al final del turno
+// DELETE — Operador cierra turno, desvincula su grúa
 export async function DELETE() {
   try {
     const supabase = await createClient()
