@@ -28,14 +28,15 @@ export default function LiveMonitorPage() {
       if (opsError) setDbError(`Error ops: ${opsError.message}`)
       if (ops) setOperators(ops)
 
-      // Grúas activas en calle = tienen last_location_update en las últimas 2h
-      const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString()
+      // Grúas en calle = tienen al menos un operador vinculado (profiles.tow_truck_id != null)
       const { data: tw, error: twError } = await supabase
         .from('tow_trucks')
-        .select('id, economic_number, photo_url, last_location_update, profiles(full_name)')
-        .gt('last_location_update', twoHoursAgo)
+        .select('id, economic_number, unit_type, photo_url, profiles!profiles_tow_truck_id_fkey(full_name, avatar_url)')
+        .eq('is_active', true)
+        .not('id', 'is', null)
       if (twError) setDbError(prev => prev ? `${prev} | Error trucks: ${twError.message}` : `Error trucks: ${twError.message}`)
-      if (tw) setTrucks(tw)
+      // Solo mostrar grúas con operador vinculado
+      if (tw) setTrucks(tw.filter(t => Array.isArray(t.profiles) ? t.profiles.length > 0 : !!t.profiles))
 
       // Despachadores
       const { data: disp } = await supabase
@@ -115,16 +116,19 @@ export default function LiveMonitorPage() {
             {trucks.length === 0 && (
               <p className="text-center text-slate-400 text-xs py-6">Sin grúas con GPS activo</p>
             )}
-            {trucks.map(tw => (
-              <PersonnelRow
-                key={tw.id}
-                name={`${tw.economic_number}${tw.unit_type ? ` (Tipo ${tw.unit_type})` : ''}`}
-                sub={(tw.profiles as any)?.full_name ?? 'Sin operador'}
-                online={true}
-                icon="truck"
-                avatarUrl={tw.photo_url}
-              />
-            ))}
+            {trucks.map(tw => {
+              const op = Array.isArray(tw.profiles) ? tw.profiles[0] : tw.profiles
+              return (
+                <PersonnelRow
+                  key={tw.id}
+                  name={`${tw.economic_number}${tw.unit_type ? ` (Tipo ${tw.unit_type})` : ''}`}
+                  sub={op?.full_name ? `Operador: ${op.full_name}` : 'Sin operador asignado'}
+                  online={true}
+                  icon="truck"
+                  avatarUrl={tw.photo_url}
+                />
+              )
+            })}
           </div>
         </div>
 
