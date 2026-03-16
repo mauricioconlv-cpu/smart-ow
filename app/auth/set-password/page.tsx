@@ -22,22 +22,28 @@ export default function SetPasswordPage() {
   )
 
   useEffect(() => {
-    // Supabase puede entregar los tokens en el hash de la URL
-    // cuando el invite no pasa por el callback PKCE
-    const hash = window.location.hash
-    if (hash && hash.includes('access_token')) {
-      const params = new URLSearchParams(hash.replace('#', ''))
-      const access_token = params.get('access_token')
-      const refresh_token = params.get('refresh_token')
-      if (access_token && refresh_token) {
-        supabase.auth.setSession({ access_token, refresh_token }).then(() => {
-          setSessionLoading(false)
+    // Supabase procesa el hash automáticamente en la carga inicial
+    // Solo necesitamos esperar a que la sesión esté lista
+    const checkSession = async () => {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (session) {
+        setSessionLoading(false)
+      } else {
+        // En caso de que no haya sesión de inmediato, escuchamos el evento
+        const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+          if (session) {
+            setSessionLoading(false)
+          } else if (event === 'INITIAL_SESSION') {
+            // Si termina de checar y no hay sesión, falló.
+            setSessionLoading(false)
+            setError('No se pudo establecer la sesión. El enlace puede haber expirado.')
+          }
         })
-        return
+        return () => subscription.unsubscribe()
       }
     }
-    setSessionLoading(false)
-  }, [])
+    checkSession()
+  }, [supabase.auth])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
