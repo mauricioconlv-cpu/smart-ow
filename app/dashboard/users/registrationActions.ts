@@ -22,6 +22,7 @@ export async function approveRegistration(requestId: string) {
 
   if (fetchErr || !req) return { error: 'No se encontró la solicitud.' }
 
+  // 1. Crear empresa
   const { data: company, error: companyErr } = await supabaseAdmin
     .from('companies')
     .insert({ name: req.company_name })
@@ -30,25 +31,30 @@ export async function approveRegistration(requestId: string) {
 
   if (companyErr || !company) return { error: `Error al crear empresa: ${companyErr?.message}` }
 
-  const { data: authData, error: authErr } = await supabaseAdmin.auth.admin.createUser({
-    email: req.email,
-    password: req.password,
-    email_confirm: true,
-  })
+  // 2. Invitar al usuario por email (Supabase envía correo con link para establecer contraseña)
+  const { data: inviteData, error: inviteErr } = await supabaseAdmin.auth.admin.inviteUserByEmail(
+    req.email,
+    {
+      redirectTo: `${process.env.NEXT_PUBLIC_SITE_URL ?? 'https://smart-ow.vercel.app'}/auth/set-password`,
+      data: { full_name: req.admin_name },
+    }
+  )
 
-  if (authErr || !authData.user) {
+  if (inviteErr || !inviteData.user) {
     await supabaseAdmin.from('companies').delete().eq('id', company.id)
-    return { error: `Error al crear usuario: ${authErr?.message}` }
+    return { error: `Error al enviar invitación: ${inviteErr?.message}` }
   }
 
+  // 3. Crear perfil con role admin
   await supabaseAdmin.from('profiles').insert({
-    id:         authData.user.id,
+    id:         inviteData.user.id,
     full_name:  req.admin_name,
     company_id: company.id,
     role:       'admin',
     phone:      req.phone,
   })
 
+  // 4. Marcar solicitud como aprobada
   await supabaseAdmin
     .from('registration_requests')
     .update({ status: 'approved', reviewed_at: new Date().toISOString() })

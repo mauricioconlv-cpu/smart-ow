@@ -2,7 +2,7 @@
 
 import { useActionState } from 'react'
 import Link from 'next/link'
-import { Truck, Building2, User, Mail, Lock, CheckCircle, Phone, Hash, CheckCircle2 } from 'lucide-react'
+import { Truck, Building2, User, Mail, Phone, Hash, CheckCircle2 } from 'lucide-react'
 import { requestRegistration } from './actions'
 
 export default function RegisterPage() {
@@ -128,36 +128,6 @@ export default function RegisterPage() {
                 className="w-full pl-10 pr-3 py-2.5 border border-slate-300 rounded-lg text-sm text-slate-800 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
                 placeholder="admin@tuempresa.com"
               />
-            </div>
-          </div>
-
-          {/* Contraseña */}
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">
-                Contraseña
-              </label>
-              <div className="relative">
-                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-                <input
-                  name="password" type="password" required minLength={8}
-                  className="w-full pl-10 pr-3 py-2.5 border border-slate-300 rounded-lg text-sm text-slate-800 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
-                  placeholder="Mín. 8 caracteres"
-                />
-              </div>
-            </div>
-            <div>
-              <label className="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">
-                Confirmar
-              </label>
-              <div className="relative">
-                <CheckCircle className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-                <input
-                  name="confirmPassword" type="password" required minLength={8}
-                  className="w-full pl-10 pr-3 py-2.5 border border-slate-300 rounded-lg text-sm text-slate-800 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
-                  placeholder="Repetir contraseña"
-                />
-              </div>
             </div>
           </div>
 

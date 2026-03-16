@@ -15,24 +15,16 @@ export async function requestRegistration(prevState: any, formData: FormData) {
   const companyName = (formData.get('companyName') as string)?.trim()
   const fullName    = (formData.get('fullName') as string)?.trim()
   const email       = (formData.get('email') as string)?.trim().toLowerCase()
-  const password    = formData.get('password') as string
-  const confirmPass = formData.get('confirmPassword') as string
   const phone       = (formData.get('phone') as string)?.trim()
   const numTrucks   = parseInt(formData.get('numTrucks') as string) || 0
 
-  if (!companyName || !fullName || !email || !password || !phone) {
+  if (!companyName || !fullName || !email || !phone) {
     return { error: 'Todos los campos son obligatorios.' }
-  }
-  if (password.length < 8) {
-    return { error: 'La contraseña debe tener al menos 8 caracteres.' }
-  }
-  if (password !== confirmPass) {
-    return { error: 'Las contraseñas no coinciden.' }
   }
 
   const supabaseAdmin = createAdminClient()
 
-  // Verificar si el email ya existe en solicitudes pendientes o en auth
+  // Verificar si ya existe solicitud pendiente con ese email
   const { data: existingRequest } = await supabaseAdmin
     .from('registration_requests')
     .select('id')
@@ -50,7 +42,6 @@ export async function requestRegistration(prevState: any, formData: FormData) {
       company_name: companyName,
       admin_name:   fullName,
       email,
-      password,
       phone,
       num_trucks:   numTrucks,
       status:       'pending',
