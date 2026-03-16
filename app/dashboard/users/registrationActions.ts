@@ -37,7 +37,7 @@ export async function approveRegistration(requestId: string) {
   const { data: inviteData, error: inviteErr } = await supabaseAdmin.auth.admin.inviteUserByEmail(
     req.email,
     {
-      redirectTo: `${siteUrl}/auth/callback?next=/auth/set-password`,
+      redirectTo: `${siteUrl}/auth/set-password`,
       data: { full_name: req.admin_name },
     }
   )
