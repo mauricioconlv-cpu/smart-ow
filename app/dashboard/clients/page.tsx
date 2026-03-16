@@ -5,6 +5,12 @@ import { ClientActions } from './components/ClientActions'
 
 export default async function ClientsPage() {
   const supabase = await createClient()
+
+  const { data: { user } } = await supabase.auth.getUser()
+  const { data: profile } = user
+    ? await supabase.from('profiles').select('role').eq('id', user.id).single()
+    : { data: null }
+  const canEdit = profile?.role !== 'dispatcher'
   
   // Obtenemos clientes y sus reglas de precio asociadas
   const { data: clients, error } = await supabase
@@ -29,13 +35,15 @@ export default async function ClientsPage() {
             Gestiona los catálogos y las tarifas de cobro para cada cliente.
           </p>
         </div>
-        <Link 
-          href="/dashboard/clients/new"
-          className="flex items-center space-x-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium transition-colors"
-        >
-          <Plus className="h-5 w-5" />
-          <span>Nuevo Cliente</span>
-        </Link>
+        {canEdit && (
+          <Link 
+            href="/dashboard/clients/new"
+            className="flex items-center space-x-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium transition-colors"
+          >
+            <Plus className="h-5 w-5" />
+            <span>Nuevo Cliente</span>
+          </Link>
+        )}
       </div>
 
       <div className="bg-white shadow rounded-lg overflow-hidden">
@@ -87,7 +95,7 @@ export default async function ClientsPage() {
                           : 'No configurada'}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                      <ClientActions clientId={client.id} clientName={client.name} />
+                      <ClientActions clientId={client.id} clientName={client.name} canEdit={canEdit} />
                     </td>
                   </tr>
                 )

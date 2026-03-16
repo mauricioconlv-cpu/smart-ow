@@ -6,9 +6,11 @@ import Link from 'next/link'
 import { deleteClient } from '../actions'
 import { Trash2, Pencil } from 'lucide-react'
 
-export function ClientActions({ clientId, clientName }: { clientId: string; clientName: string }) {
+export function ClientActions({ clientId, clientName, canEdit }: { clientId: string; clientName: string; canEdit: boolean }) {
   const router = useRouter()
   const [loading, setLoading] = useState(false)
+
+  if (!canEdit) return null
 
   async function handleDelete() {
     const confirmed = window.confirm(

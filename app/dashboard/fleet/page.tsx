@@ -8,6 +8,12 @@ export const dynamic = 'force-dynamic'
 export default async function FleetPage() {
   const supabase = await createClient()
 
+  const { data: { user } } = await supabase.auth.getUser()
+  const { data: profile } = user
+    ? await supabase.from('profiles').select('role').eq('id', user.id).single()
+    : { data: null }
+  const canEdit = profile?.role !== 'dispatcher'
+
   // Leer la lista de grúas
   const { data: towTrucks } = await supabase
     .from('tow_trucks')
@@ -33,13 +39,15 @@ export default async function FleetPage() {
           <h1 className="text-2xl font-bold text-slate-800">Flotilla de Grúas</h1>
           <p className="text-slate-500 mt-1">Gestiona tus vehículos, números económicos y placas de circulación.</p>
         </div>
-        <Link 
-          href="/dashboard/fleet/new" 
-          className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2.5 rounded-lg flex items-center gap-2 font-medium transition-colors"
-        >
-          <Plus className="h-5 w-5" />
-          Nueva Grúa
-        </Link>
+        {canEdit && (
+          <Link 
+            href="/dashboard/fleet/new" 
+            className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2.5 rounded-lg flex items-center gap-2 font-medium transition-colors"
+          >
+            <Plus className="h-5 w-5" />
+            Nueva Grúa
+          </Link>
+        )}
       </div>
 
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
@@ -86,7 +94,7 @@ export default async function FleetPage() {
                     }
                   </td>
                   <td className="p-4">
-                     <FleetRowActions truckId={truck.id} economicNumber={truck.economic_number} />
+                     <FleetRowActions truckId={truck.id} economicNumber={truck.economic_number} canEdit={canEdit} />
                   </td>
                 </tr>
               ))}
