@@ -32,10 +32,12 @@ export async function approveRegistration(requestId: string) {
   if (companyErr || !company) return { error: `Error al crear empresa: ${companyErr?.message}` }
 
   // 2. Invitar al usuario por email (Supabase envía correo con link para establecer contraseña)
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://smart-ow.vercel.app'
+
   const { data: inviteData, error: inviteErr } = await supabaseAdmin.auth.admin.inviteUserByEmail(
     req.email,
     {
-      redirectTo: `${process.env.NEXT_PUBLIC_SITE_URL ?? 'https://smart-ow.vercel.app'}/auth/set-password`,
+      redirectTo: `${siteUrl}/auth/callback?next=/auth/set-password`,
       data: { full_name: req.admin_name },
     }
   )

@@ -1,8 +1,8 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { createBrowserClient } from '@supabase/ssr'
-import { Lock, Eye, EyeOff, CheckCircle2, Truck } from 'lucide-react'
+import { Lock, Eye, EyeOff, CheckCircle2, Truck, Loader2 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 
 export default function SetPasswordPage() {
@@ -11,6 +11,7 @@ export default function SetPasswordPage() {
   const [showPass, setShowPass] = useState(false)
   const [showConf, setShowConf] = useState(false)
   const [loading, setLoading] = useState(false)
+  const [sessionLoading, setSessionLoading] = useState(true)
   const [error, setError] = useState('')
   const [done, setDone] = useState(false)
   const router = useRouter()
@@ -19,6 +20,24 @@ export default function SetPasswordPage() {
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
   )
+
+  useEffect(() => {
+    // Supabase puede entregar los tokens en el hash de la URL
+    // cuando el invite no pasa por el callback PKCE
+    const hash = window.location.hash
+    if (hash && hash.includes('access_token')) {
+      const params = new URLSearchParams(hash.replace('#', ''))
+      const access_token = params.get('access_token')
+      const refresh_token = params.get('refresh_token')
+      if (access_token && refresh_token) {
+        supabase.auth.setSession({ access_token, refresh_token }).then(() => {
+          setSessionLoading(false)
+        })
+        return
+      }
+    }
+    setSessionLoading(false)
+  }, [])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -37,13 +56,21 @@ export default function SetPasswordPage() {
     const { error: updateErr } = await supabase.auth.updateUser({ password })
 
     if (updateErr) {
-      setError('Error al establecer contraseña: ' + updateErr.message)
+      setError('Error: ' + updateErr.message + '. Por favor solicita un nuevo link de invitación.')
       setLoading(false)
       return
     }
 
     setDone(true)
     setTimeout(() => router.push('/dashboard'), 2000)
+  }
+
+  if (sessionLoading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-slate-900 via-blue-950 to-slate-900">
+        <Loader2 className="w-8 h-8 text-blue-400 animate-spin" />
+      </div>
+    )
   }
 
   if (done) {
