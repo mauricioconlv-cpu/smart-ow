@@ -37,6 +37,9 @@ export default function NewServicePage() {
   const [originLatLng, setOriginLatLng] = useState<{lat:number,lng:number}|null>(null)
   const [destLatLng, setDestLatLng] = useState<{lat:number,lng:number}|null>(null)
   const [showRatesModal, setShowRatesModal] = useState(false)
+  const [costoParticular, setCostoParticular] = useState<string>('')
+
+  const isParticular = selectedClient === 'particular'
 
   // Extras del servicio
   const [numeroExpediente, setNumeroExpediente] = useState('')
@@ -102,7 +105,7 @@ export default function NewServicePage() {
     }
 
     const clientData = clients.find(c => c.id === selectedClient)
-    if (!clientData) return
+    if (!clientData) return // includes 'particular' - no tariff needed
 
     // ── Detectar si el cliente usa el NUEVO formato (tipo='general') o el VIEJO (tipo='local'/'foraneo') ──
     const generalRule = clientData.pricing_rules.find((r: any) => r.tipo === 'general')
@@ -179,6 +182,8 @@ export default function NewServicePage() {
     if (!selectedClient) { setCreateError('Selecciona una aseguradora/cliente.'); return }
     if (!selectedTruck)  { setCreateError('Selecciona una grúa de la flotilla.'); return }
 
+    const costoFinal = isParticular ? (parseFloat(costoParticular) || 0) : costoCalculado
+
     setIsCreating(true)
     setCreateError('')
 
@@ -205,14 +210,15 @@ export default function NewServicePage() {
         .from('services')
         .insert({
           company_id:    profile.company_id,
-          client_id:     selectedClient,
+          client_id:     isParticular ? null : selectedClient,
           operator_id:   operatorProfile?.id ?? null,
           tipo_servicio: tipoServicio,
           distancia_km:  distanciaAproximada,
-          costo_calculado: costoCalculado,
+          costo_calculado: costoFinal,
           origen_coords: originLatLng  ? { lat: originLatLng.lat,  lng: originLatLng.lng }  : null,
           destino_coords: destLatLng   ? { lat: destLatLng.lat,    lng: destLatLng.lng }    : null,
-          status: 'creado'
+          status: 'creado',
+          es_particular: isParticular,
         })
         .select('id')
         .single()
@@ -307,10 +313,11 @@ export default function NewServicePage() {
                   className="mt-1 block w-full rounded-md border-0 py-2.5 pl-3 pr-10 text-gray-900 ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-blue-600 text-sm"
                 >
                   <option value="">Seleccione...</option>
+                  <option value="particular">⚡ Servicio de Particular (costo libre)</option>
                   {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                 </select>
-                {/* Burbuja de tarifas */}
-                {selectedClient && selectedClientData && (
+                {/* Burbuja de tarifas — solo para aseguradoras conocidas */}
+                {selectedClient && !isParticular && selectedClientData && (
                   <button
                     type="button"
                     onClick={() => setShowRatesModal(true)}
@@ -319,6 +326,12 @@ export default function NewServicePage() {
                     <FileText className="w-3.5 h-3.5" />
                     Ver tarifas de {selectedClientData.name}
                   </button>
+                )}
+                {/* Badge de particular */}
+                {isParticular && (
+                  <span className="mt-2 inline-flex items-center gap-1.5 text-xs font-semibold text-amber-700 bg-amber-50 border border-amber-200 px-3 py-1.5 rounded-full">
+                    ⚡ Costo libre — ingresa el monto manualmente
+                  </span>
                 )}
               </div>
               <div>
@@ -568,12 +581,38 @@ export default function NewServicePage() {
               </div>
             )}
 
-            <div className="pt-3 border-t border-slate-700">
-              <span className="block text-sm text-slate-400 mb-1">Costo Total Estimado</span>
-              <span className="text-4xl font-bold text-green-400">
-                ${costoCalculado.toLocaleString('es-MX', { minimumFractionDigits: 2 })}
-              </span>
-            </div>
+              <div className="pt-4 border-t border-slate-700/50">
+                <p className="text-slate-400 text-sm mb-1">Costo Total Estimado</p>
+                
+                {isParticular ? (
+                  <div className="space-y-2 mt-2">
+                    <label className="block text-xs font-semibold text-emerald-400 uppercase tracking-wide">
+                      Ingresa el costo acordado
+                    </label>
+                    <div className="relative">
+                      <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                        <span className="text-slate-400 sm:text-sm">$</span>
+                      </div>
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        placeholder="0.00"
+                        value={costoParticular}
+                        onChange={(e) => setCostoParticular(e.target.value)}
+                        className="block w-full pl-7 pr-12 py-3 bg-slate-900/50 border border-slate-700 rounded-lg text-emerald-400 text-2xl font-black placeholder:text-slate-600 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all"
+                      />
+                      <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
+                        <span className="text-slate-500 sm:text-sm">MXN</span>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="text-3xl font-black text-emerald-400">
+                    {new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(costoCalculado)}
+                  </p>
+                )}
+              </div>
 
             {createError && <p className="mt-4 text-red-400 text-xs font-medium">{createError}</p>}
             <button type="button" onClick={handleCreateService} disabled={isCreating}
