@@ -4,6 +4,7 @@ import { Plus, Shield, MapPin, Truck, User, Phone, DollarSign, BarChart3 } from 
 import UserRowActions from './components/UserRowActions'
 import PasswordRequestsPanel from './components/PasswordRequestsPanel'
 import SuperadminAnalytics from './components/SuperadminAnalytics'
+import RegistrationRequestsPanel from './components/RegistrationRequestsPanel'
 
 export default async function UsersPage() {
   const supabase = await createClient()
@@ -32,6 +33,9 @@ export default async function UsersPage() {
 
     return (
       <div className="p-6 max-w-5xl mx-auto space-y-8">
+        {/* ── Solicitudes de Registro (solo superadmin) ── */}
+        <RegistrationRequestsPanel />
+
         {/* ── Panel de Plataforma ── */}
         <div>
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
