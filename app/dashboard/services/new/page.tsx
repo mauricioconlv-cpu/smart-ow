@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { createBrowserClient } from '@supabase/ssr'
-import { Plus, MapPin, Calculator, AlertCircle, Wrench } from 'lucide-react'
+import { Plus, MapPin, Calculator, AlertCircle, Wrench, FileText, X } from 'lucide-react'
 
 const supabase = createBrowserClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -36,6 +36,7 @@ export default function NewServicePage() {
   const [createError, setCreateError] = useState('')
   const [originLatLng, setOriginLatLng] = useState<{lat:number,lng:number}|null>(null)
   const [destLatLng, setDestLatLng] = useState<{lat:number,lng:number}|null>(null)
+  const [showRatesModal, setShowRatesModal] = useState(false)
 
   // Extras del servicio
   const [numeroExpediente, setNumeroExpediente] = useState('')
@@ -298,16 +299,27 @@ export default function NewServicePage() {
               Información del Cliente
             </h3>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
+                <div>
                 <label className="block text-sm font-medium text-gray-900 mb-1">Aseguradora</label>
                 <select 
                   value={selectedClient}
-                  onChange={(e) => setSelectedClient(e.target.value)}
+                  onChange={(e) => { setSelectedClient(e.target.value); setShowRatesModal(false) }}
                   className="mt-1 block w-full rounded-md border-0 py-2.5 pl-3 pr-10 text-gray-900 ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-blue-600 text-sm"
                 >
                   <option value="">Seleccione...</option>
                   {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                 </select>
+                {/* Burbuja de tarifas */}
+                {selectedClient && selectedClientData && (
+                  <button
+                    type="button"
+                    onClick={() => setShowRatesModal(true)}
+                    className="mt-2 inline-flex items-center gap-1.5 text-xs font-semibold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 px-3 py-1.5 rounded-full transition-colors"
+                  >
+                    <FileText className="w-3.5 h-3.5" />
+                    Ver tarifas de {selectedClientData.name}
+                  </button>
+                )}
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-900 mb-1">Tipo de Tabulador</label>
@@ -574,6 +586,100 @@ export default function NewServicePage() {
         </div>
 
       </div>
+
+      {/* Modal de Tarifas */}
+      {showRatesModal && selectedClientData && (() => {
+        const rule = selectedClientData.pricing_rules?.find((r: any) => r.tipo === 'general')
+          ?? selectedClientData.pricing_rules?.[0]
+        const TIPOS = ['a', 'b', 'c', 'd']
+        const TIPO_LABELS: Record<string, string> = {
+          a: 'Tipo A (<3.5t)', b: 'Tipo B (3.5-7.5t)', c: 'Tipo C (7.5-11t)', d: 'Tipo D (>11t)'
+        }
+        const extras: { label: string; key: string }[] = [
+          { label: 'Maniobra', key: 'costo_maniobra' },
+          { label: 'Hora de Espera', key: 'costo_hora_espera' },
+          { label: 'Abanderamiento', key: 'costo_abanderamiento' },
+          { label: 'Resguardo', key: 'costo_resguardo' },
+          { label: 'Dollys', key: 'costo_dollys' },
+          { label: 'Patines', key: 'costo_patines' },
+          { label: 'Go Jacks', key: 'costo_go_jacks' },
+          { label: 'Rescate Subterráneo', key: 'costo_rescate_subterraneo' },
+          { label: 'Adaptación', key: 'costo_adaptacion' },
+          { label: 'Kg de Carga', key: 'costo_kg_carga' },
+        ]
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4" onClick={() => setShowRatesModal(false)}>
+            <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl max-h-[80vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+              <div className="flex items-center justify-between p-5 border-b border-slate-100">
+                <div>
+                  <h2 className="text-lg font-bold text-slate-800">Tarifas Negociadas</h2>
+                  <p className="text-sm text-slate-500">{selectedClientData.name}</p>
+                </div>
+                <button onClick={() => setShowRatesModal(false)} className="p-2 hover:bg-slate-100 rounded-full transition-colors">
+                  <X className="w-5 h-5 text-slate-500" />
+                </button>
+              </div>
+              <div className="p-5 space-y-6">
+                {rule ? (
+                  <>
+                    {/* Tabla por tipo de grúa */}
+                    <div>
+                      <h3 className="text-sm font-bold text-slate-700 uppercase tracking-wide mb-3">Costo por Tipo de Grúa</h3>
+                      <table className="w-full text-sm border-collapse">
+                        <thead>
+                          <tr className="bg-slate-50 text-xs text-slate-500 uppercase">
+                            <th className="text-left p-2 font-semibold">Tipo</th>
+                            <th className="text-right p-2 font-semibold">Local (Fijo)</th>
+                            <th className="text-right p-2 font-semibold">Banderazo Foráneo</th>
+                            <th className="text-right p-2 font-semibold">$/Km</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                          {TIPOS.map(t => (
+                            <tr key={t}>
+                              <td className="p-2 font-semibold text-slate-800">{TIPO_LABELS[t]}</td>
+                              <td className="p-2 text-right text-slate-700">
+                                ${Number(rule[`costo_local_tipo_${t}`] || 0).toLocaleString('es-MX', {minimumFractionDigits: 2})}
+                              </td>
+                              <td className="p-2 text-right text-slate-700">
+                                ${Number(rule[`costo_bande_tipo_${t}`] || 0).toLocaleString('es-MX', {minimumFractionDigits: 2})}
+                              </td>
+                              <td className="p-2 text-right text-slate-700">
+                                ${Number(rule[`costo_km_tipo_${t}`] || 0).toLocaleString('es-MX', {minimumFractionDigits: 2})}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                    {/* Costos adicionales */}
+                    <div>
+                      <h3 className="text-sm font-bold text-slate-700 uppercase tracking-wide mb-3">Costos Adicionales y Herramientas</h3>
+                      <table className="w-full text-sm border-collapse">
+                        <tbody className="divide-y divide-slate-100">
+                          {extras.filter(e => Number(rule[e.key] || 0) > 0).map(e => (
+                            <tr key={e.key}>
+                              <td className="p-2 text-slate-600">{e.label}</td>
+                              <td className="p-2 text-right font-semibold text-slate-800">
+                                ${Number(rule[e.key] || 0).toLocaleString('es-MX', {minimumFractionDigits: 2})}
+                              </td>
+                            </tr>
+                          ))}
+                          {extras.every(e => Number(rule[e.key] || 0) === 0) && (
+                            <tr><td colSpan={2} className="p-2 text-slate-400 text-center italic">Sin costos adicionales configurados</td></tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </>
+                ) : (
+                  <p className="text-center text-slate-400 py-8">No hay tarifas configuradas para este cliente.</p>
+                )}
+              </div>
+            </div>
+          </div>
+        )
+      })()}
     </div>
   )
 }
