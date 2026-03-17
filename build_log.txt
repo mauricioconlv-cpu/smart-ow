@@ -1,0 +1,115 @@
+﻿node.exe : ÔÜá Warning: Next.js 
+inferred your workspace root, but 
+it may not be correct.
+En línea: 1 Carácter: 1
++ & "C:\Program 
+Files\nodejs/node.exe" "C:\Program 
+Files\nodejs/node_mo ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~
+    + CategoryInfo          : NotS 
+   pecified: (ÔÜá Warning: Ne...n  
+  ot be correct.:String) [], Rem   
+ oteException
+    + FullyQualifiedErrorId : Nati 
+   veCommandError
+ 
+ We detected multiple lockfiles 
+and selected the directory of 
+C:\Users\mauri\package-lock.json 
+as the root directory.
+ To silence this warning, set 
+`turbopack.root` in your Next.js 
+config, or consider removing one 
+of the lockfiles if it's not 
+needed.
+   See https://nextjs.org/docs/app/
+api-reference/config/next-config-js
+/turbopack#root-directory for more 
+information.
+ Detected additional lockfiles: 
+   * C:\Users\mauri\.gemini\antigra
+vity\scratch\smart-tow\package-lock
+.json
+
+Ôû▓ Next.js 16.1.6 (Turbopack)
+
+ÔÜá The "middleware" file 
+convention is deprecated. Please 
+use "proxy" instead. Learn more: ht
+tps://nextjs.org/docs/messages/midd
+leware-to-proxy
+  Creating an optimized production build ...
+Found 1 warning while optimizing 
+generated CSS:
+
+[2mÔöé   }[22m
+[2mÔöé }[22m
+[2mÔöé[22m @import url('https://f
+onts.googleapis.com/css2?family=Int
+er:wght@300;400;500;600;700;800;900
+&display=swap');
+[2mÔöå[22m        
+[33m[2m^--[22m @import rules 
+must precede all rules aside from 
+@charset and @layer statements[39m
+[2mÔöå[22m
+[2mÔöé :root {[22m
+[2mÔöé   --blue-primary: 
+#1d4ed8;[22m
+
+Ô£ô Compiled successfully in 7.8s
+  Running TypeScript ...
+  Collecting page data using 15 workers ...
+  Generating static pages using 15 workers (0/26) ...
+  Generating static pages using 15 workers (6/26) 
+  Generating static pages using 15 workers (12/26) 
+Error occurred prerendering page 
+"/auth/set-password". Read more: ht
+tps://nextjs.org/docs/messages/prer
+ender-error
+Error: supabaseUrl is required.
+    at <unknown> (C:\Users\mauri\.g
+emini\antigravity\scratch\smart-tow
+\.next\server\chunks\ssr\8be98_@sup
+abase_supabase-js_dist_index_mjs_cc
+32bf1d._.js:37:43440)
+    at new cd (C:\Users\mauri\.gemi
+ni\antigravity\scratch\smart-tow\.n
+ext\server\chunks\ssr\8be98_@supaba
+se_supabase-js_dist_index_mjs_cc32b
+f1d._.js:37:43691)
+    at ce (C:\Users\mauri\.gemini\a
+ntigravity\scratch\smart-tow\.next\
+server\chunks\ssr\8be98_@supabase_s
+upabase-js_dist_index_mjs_cc32bf1d.
+_.js:37:47633)
+    at module evaluation (C:\Users\
+mauri\.gemini\antigravity\scratch\s
+mart-tow\.next\server\chunks\ssr\[r
+oot-of-the-server]__62dc013d._.js:1
+:6410)
+    at instantiateModule (C:\Users\
+mauri\.gemini\antigravity\scratch\s
+mart-tow\.next\server\chunks\ssr\[t
+urbopack]_runtime.js:740:9)
+    at 
+getOrInstantiateModuleFromParent (C
+:\Users\mauri\.gemini\antigravity\s
+cratch\smart-tow\.next\server\chunk
+s\ssr\[turbopack]_runtime.js:763:12
+)
+    at Context.commonJsRequire [as 
+r] (C:\Users\mauri\.gemini\antigrav
+ity\scratch\smart-tow\.next\server\
+chunks\ssr\[turbopack]_runtime.js:2
+49:12) {
+  digest: '1190663118'
+}
+Export encountered an error on 
+/auth/set-password/page: 
+/auth/set-password, exiting the 
+build.
+Ô¿» Next.js build worker exited 
+with code: 1 and signal: null

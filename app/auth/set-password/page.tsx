@@ -1,6 +1,6 @@
 'use client'
 
-export const dynamic = 'force-dynamic'
+
 
 import { useState, useEffect } from 'react'
 import { createClient } from '@supabase/supabase-js'
@@ -14,7 +14,7 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 )
 
-export default function SetPasswordPage() {
+function SetPasswordPageInner() {
   const [password, setPassword] = useState('')
   const [confirm, setConfirm] = useState('')
   const [showPass, setShowPass] = useState(false)
@@ -193,3 +193,6 @@ export default function SetPasswordPage() {
     </div>
   )
 }
+
+import dynamic from 'next/dynamic'
+export default dynamic(() => Promise.resolve(SetPasswordPageInner), { ssr: false })
