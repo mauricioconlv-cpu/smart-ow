@@ -22,12 +22,12 @@ export async function assignOperator(serviceId: string, operatorId: string) {
   const profile = await getProfileInfo(supabase, user.id)
   if (!profile) return { error: 'Perfil no encontrado' }
 
-  // 1. Asignar la grúa al servicio (estado: 'asignado')
+  // 1. Asignar la grúa al servicio (estado oficial inicial: 'rumbo_contacto')
   const { error } = await supabase
     .from('services')
     .update({
       operator_id: operatorId,
-      status: 'asignado',
+      status: 'rumbo_contacto',
     })
     .eq('id', serviceId)
 
