@@ -233,7 +233,7 @@ export default function NewServicePage() {
           costo_calculado: costoFinal,
           origen_coords: originLatLng  ? { lat: originLatLng.lat,  lng: originLatLng.lng }  : null,
           destino_coords: destLatLng   ? { lat: destLatLng.lat,    lng: destLatLng.lng }    : null,
-          status: 'creado',
+          status: operatorProfile?.id ? 'rumbo_contacto' : 'creado',
           es_particular: isParticular,
         })
         .select('id')
@@ -250,7 +250,21 @@ export default function NewServicePage() {
         costo_desglose:         costoDesglose,
       }).eq('id', newService.id)
 
-      window.location.href = `/dashboard/services/${newService.id}/capture`
+      // PASO 3: Log en Bitácora si se asignó operador
+      if (operatorProfile?.id) {
+        await supabase.from('service_logs').insert({
+          service_id: newService.id,
+          company_id: profile.company_id,
+          created_by: user.id,
+          type: 'assignment',
+          note: `Grúa asignada exitosamente al crear servicio. Operador notificado.`,
+          event_label: `🚚 Asignación Inicial`,
+          actor_role: 'admin',
+        })
+        window.location.href = `/dashboard/services/${newService.id}/tracking`
+      } else {
+        window.location.href = `/dashboard/services/${newService.id}/capture`
+      }
     } catch (err: any) {
       setCreateError(err.message || 'Error desconocido.')
       setIsCreating(false)

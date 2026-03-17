@@ -42,41 +42,52 @@ export default function TrackingPage() {
   const [truck, setTruck] = useState<any>(null)
   const [truckGps, setTruckGps] = useState<{ lat: number; lng: number } | null>(null)
   const [loading, setLoading] = useState(true)
+  const [errorMsg, setErrorMsg] = useState('')
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   const fetchData = async () => {
-    const { data: svc } = await supabase
-      .from('services')
-      .select('*, clients(name, phone)')
-      .eq('id', id)
-      .single()
-    if (!svc) return
-    setService(svc)
-
-    if (svc.operator_id) {
-      const { data: prof } = await supabase
-        .from('profiles')
-        .select('id, full_name, avatar_url, phone, tow_truck_id')
-        .eq('id', svc.operator_id)
+    try {
+      const { data: svc, error: err } = await supabase
+        .from('services')
+        .select('*, clients(name, phone)')
+        .eq('id', id)
         .single()
-      if (prof) {
-        setOperator(prof)
-        if (prof.tow_truck_id) {
-          const { data: t } = await supabase
-            .from('tow_trucks')
-            .select('economic_number, brand, model, plates, current_lat, current_lng')
-            .eq('id', prof.tow_truck_id)
-            .single()
-          if (t) {
-            setTruck(t)
-            if (t.current_lat && t.current_lng) {
-              setTruckGps({ lat: t.current_lat, lng: t.current_lng })
+        
+      if (err || !svc) {
+        setErrorMsg('Servicio no encontrado o sin permisos.')
+        setLoading(false)
+        return
+      }
+      setService(svc)
+
+      if (svc.operator_id) {
+        const { data: prof } = await supabase
+          .from('profiles')
+          .select('id, full_name, avatar_url, phone, tow_truck_id')
+          .eq('id', svc.operator_id)
+          .single()
+        if (prof) {
+          setOperator(prof)
+          if (prof.tow_truck_id) {
+            const { data: t } = await supabase
+              .from('tow_trucks')
+              .select('economic_number, brand, model, plates, current_lat, current_lng')
+              .eq('id', prof.tow_truck_id)
+              .single()
+            if (t) {
+              setTruck(t)
+              if (t.current_lat && t.current_lng) {
+                setTruckGps({ lat: t.current_lat, lng: t.current_lng })
+              }
             }
           }
         }
       }
+    } catch (e: any) {
+      setErrorMsg(e.message)
+    } finally {
+      setLoading(false)
     }
-    setLoading(false)
   }
 
   useEffect(() => {
@@ -93,6 +104,14 @@ export default function TrackingPage() {
     return (
       <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f8fafc' }}>
         <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
+      </div>
+    )
+  }
+
+  if (errorMsg || !service) {
+    return (
+      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f8fafc' }}>
+        <p style={{ color: '#ef4444', fontWeight: 600 }}>{errorMsg || 'Servicio no disponible'}</p>
       </div>
     )
   }
