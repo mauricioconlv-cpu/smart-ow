@@ -36,9 +36,24 @@ async function reverseGeocode(lat: number, lng: number) {
     )
     const data = await res.json()
     const a = data.address || {}
+
+    // Para CDMX, Nominatim devuelve a.city = 'Ciudad de México' para todos.
+    // La alcaldía (Cuauhtémoc, Benito Juárez, etc.) viene en city_district o suburb.
+    // Para el resto del país, usamos city, town o county.
+    const isCDMX = (a.state || '').toLowerCase().includes('ciudad de méxico') ||
+                   (a.state || '').toLowerCase().includes('cdmx')
+
+    let municipality = ''
+    if (isCDMX) {
+      // Alcaldía real para CDMX
+      municipality = a.city_district ?? a.borough ?? a.suburb ?? a.county ?? 'Ciudad de México'
+    } else {
+      municipality = a.city ?? a.town ?? a.municipality ?? a.county ?? a.state_district ?? ''
+    }
+
     return {
       state: a.state ?? '',
-      municipality: a.city ?? a.county ?? a.state_district ?? '',
+      municipality,
       colonia: a.suburb ?? a.neighbourhood ?? a.quarter ?? '',
       street: a.road ?? a.pedestrian ?? ''
     }
@@ -258,7 +273,8 @@ export default function ServiceCapturePage() {
       setContactName(data.contact_name || '')
       setContactPhone(data.contact_phone || '')
       setInsuranceContact(data.insurance_contact || '')
-      setInsuranceFolio(data.insurance_folio || '')
+      // Si ya tiene insurance_folio guardado úsalo, si no pre-llenar con numero_expediente del paso anterior
+      setInsuranceFolio(data.insurance_folio || data.numero_expediente || '')
 
       setServiceReason(data.service_reason || '')
       setAssistanceType(data.assistance_type || '')
