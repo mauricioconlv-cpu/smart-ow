@@ -1,9 +1,9 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import dynamic from 'next/dynamic'
 import Link from 'next/link'
-import { MapPin, ArrowRight } from 'lucide-react'
+import { MapPin, ArrowRight, Bell } from 'lucide-react'
 
 // All browser-only components loaded dynamically with ssr:false
 const PlateGate           = dynamic(() => import('./PlateGate'),           { ssr: false })
@@ -36,6 +36,28 @@ export default function OperatorClientLayer() {
   const [services, setServices]       = useState<any[]>([])
   const [loading, setLoading]         = useState(true)
   const [dbError, setDbError]         = useState<string | null>(null)
+  const [newServiceAlert, setNewServiceAlert] = useState(false)
+  const prevServiceCount = useRef(0)
+
+  // Plays a attention beep using the Web Audio API (no external files needed)
+  const playNotification = () => {
+    try {
+      const ctx = new (window.AudioContext || (window as any).webkitAudioContext)()
+      const frequencies = [880, 1100, 880]
+      frequencies.forEach((freq, i) => {
+        const osc = ctx.createOscillator()
+        const gain = ctx.createGain()
+        osc.connect(gain)
+        gain.connect(ctx.destination)
+        osc.type = 'sine'
+        osc.frequency.value = freq
+        gain.gain.setValueAtTime(0.5, ctx.currentTime + i * 0.15)
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + i * 0.15 + 0.2)
+        osc.start(ctx.currentTime + i * 0.15)
+        osc.stop(ctx.currentTime + i * 0.15 + 0.25)
+      })
+    } catch {}
+  }
 
   useEffect(() => {
     ;(async () => {
@@ -84,7 +106,16 @@ export default function OperatorClientLayer() {
             .in('status', OPERATOR_VISIBLE_STATUSES)
             .order('created_at', { ascending: false })
             .limit(20)
-          if (svcData) setServices(svcData)
+          if (svcData) {
+            // 🔔 Sound alert when a NEW service arrives
+            if (prevServiceCount.current > 0 && svcData.length > prevServiceCount.current) {
+              playNotification()
+              setNewServiceAlert(true)
+              setTimeout(() => setNewServiceAlert(false), 6000)
+            }
+            prevServiceCount.current = svcData.length
+            setServices(svcData)
+          }
 
           setLoading(false)
         }
@@ -131,6 +162,20 @@ export default function OperatorClientLayer() {
 
       {/* Invisible GPS tracker */}
       {operatorId && <OperatorTracker operatorId={operatorId} truckId={truck.id} />}
+
+      {/* 🔔 Notification Banner — shows when a new service arrives */}
+      {newServiceAlert && (
+        <div style={{
+          position: 'fixed', top: 72, left: '50%', transform: 'translateX(-50%)', zIndex: 9999,
+          background: '#f59e0b', color: 'white', borderRadius: 14, padding: '14px 24px',
+          display: 'flex', alignItems: 'center', gap: 10, boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
+          animation: 'pulse-banner 0.5s ease-in-out infinite alternate'
+        }}>
+          <Bell className="w-5 h-5" style={{ flexShrink: 0 }} />
+          <span style={{ fontWeight: 700, fontSize: 15 }}>¡Nuevo servicio asignado!</span>
+          <style>{`@keyframes pulse-banner { from { transform: translateX(-50%) scale(1); } to { transform: translateX(-50%) scale(1.03); } }`}</style>
+        </div>
+      )}
 
       {/* Assigned truck banner */}
       <AssignedTruckBanner
