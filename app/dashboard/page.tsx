@@ -20,19 +20,45 @@ export default function LiveMonitorPage() {
 
   useEffect(() => {
     const fetchPersonnel = async () => {
-      // Operadores — no filtramos por updated_at (no existe), mostramos todos los que tengan role='operator'
+      // Obtener empresa del usuario actual para filtrar
+      const { data: { user } } = await supabase.auth.getUser()
+      const { data: myProfile } = user
+        ? await supabase.from('profiles').select('company_id').eq('id', user.id).single()
+        : { data: null }
+      const companyId = myProfile?.company_id
+
+      // Operadores con su grúa asignada para obtener GPS
       const { data: ops, error: opsError } = await supabase
         .from('profiles')
-        .select('id, full_name, grua_asignada, avatar_url, created_at')
+        .select(`
+          id, full_name, grua_asignada, avatar_url, created_at, tow_truck_id,
+          tow_trucks!profiles_tow_truck_id_fkey(current_lat, current_lng, current_location)
+        `)
         .eq('role', 'operator')
+        .eq('company_id', companyId)
       if (opsError) setDbError(`Error ops: ${opsError.message}`)
-      if (ops) setOperators(ops)
+      if (ops) {
+        // Normalizar coordenadas: primero current_lat/lng, luego current_location JSON
+        const enriched = ops.map((op: any) => {
+          const truck = op.tow_trucks
+          let lat = truck?.current_lat ?? null
+          let lng = truck?.current_lng ?? null
+          // Fallback: leer del JSON si las columnas individuales aún no tienen valor
+          if (!lat && truck?.current_location) {
+            lat = truck.current_location.lat
+            lng = truck.current_location.lng
+          }
+          return { ...op, lat, lng }
+        })
+        setOperators(enriched)
+      }
 
-      // Grúas en calle = tienen al menos un operador vinculado (profiles.tow_truck_id != null)
+      // Grúas en calle = tienen al menos un operador vinculado
       const { data: tw, error: twError } = await supabase
         .from('tow_trucks')
         .select('id, economic_number, unit_type, photo_url, profiles!profiles_tow_truck_id_fkey(full_name, avatar_url)')
         .eq('is_active', true)
+        .eq('company_id', companyId)
         .not('id', 'is', null)
       if (twError) setDbError(prev => prev ? `${prev} | Error trucks: ${twError.message}` : `Error trucks: ${twError.message}`)
       // Solo mostrar grúas con operador vinculado
@@ -43,6 +69,7 @@ export default function LiveMonitorPage() {
         .from('profiles')
         .select('id, full_name, avatar_url, created_at')
         .eq('role', 'dispatcher')
+        .eq('company_id', companyId)
       if (disp) setDispatchers(disp)
     }
 
@@ -50,6 +77,7 @@ export default function LiveMonitorPage() {
     const interval = setInterval(fetchPersonnel, 30000)
     return () => clearInterval(interval)
   }, [])
+
 
   // Operador activo = tiene grua_asignada (fue vinculado hoy)
   const onlineOps  = operators.filter(o => !!o.grua_asignada)
