@@ -43,47 +43,58 @@ export default function OperatorClientLayer() {
         const { createClient } = await import('@/lib/supabase/client')
         const supabase = createClient()
 
-        // Auth check
-        const { data: { user } } = await supabase.auth.getUser()
-        if (!user) { window.location.href = '/login'; return }
+        const loadData = async () => {
+          // Auth check
+          const { data: { user } } = await supabase.auth.getUser()
+          if (!user) { window.location.href = '/login'; return }
+          setOperatorId(user.id)
 
-        setOperatorId(user.id)
-
-        // Profile
-        const { data: prof, error: profErr } = await supabase
-          .from('profiles')
-          .select('id, full_name, avatar_url, tow_truck_id, role')
-          .eq('id', user.id)
-          .single()
-
-        if (profErr) { setDbError('Error perfil: ' + profErr.message); setLoading(false); return }
-        if (!prof)   { setDbError('Perfil no encontrado.'); setLoading(false); return }
-
-        setOperatorName(prof.full_name ?? 'Operador')
-        setAvatarUrl(prof.avatar_url ?? null)
-
-        // Truck
-        if (prof.tow_truck_id) {
-          const { data: truckData } = await supabase
-            .from('tow_trucks')
-            .select('id, economic_number, brand, model, plates')
-            .eq('id', prof.tow_truck_id)
+          // Profile
+          const { data: prof, error: profErr } = await supabase
+            .from('profiles')
+            .select('id, full_name, avatar_url, tow_truck_id, role')
+            .eq('id', user.id)
             .single()
-          if (truckData) setTruck(truckData)
+
+          if (profErr) { setDbError('Error perfil: ' + profErr.message); setLoading(false); return }
+          if (!prof)   { setDbError('Perfil no encontrado.'); setLoading(false); return }
+
+          setOperatorName(prof.full_name ?? 'Operador')
+          setAvatarUrl(prof.avatar_url ?? null)
+
+          // Truck
+          if (prof.tow_truck_id) {
+            const { data: truckData } = await supabase
+              .from('tow_trucks')
+              .select('id, economic_number, brand, model, plates')
+              .eq('id', prof.tow_truck_id)
+              .single()
+            if (truckData) setTruck(truckData)
+          }
+
+          // Services — solo los que están formalmente asignados y en curso
+          const OPERATOR_VISIBLE_STATUSES = [
+            'asignado', 'rumbo_contacto', 'arribo_origen',
+            'contacto', 'inicio_traslado', 'traslado_concluido', 'servicio_cerrado'
+          ]
+          const { data: svcData } = await supabase
+            .from('services')
+            .select('id, folio, status, created_at, costo_calculado, calidad_estrellas, firma_url, tipo_servicio, origen_coords, destino_coords, comentarios_calidad, clients(name)')
+            .eq('operator_id', user.id)
+            .in('status', OPERATOR_VISIBLE_STATUSES)
+            .order('created_at', { ascending: false })
+            .limit(20)
+          if (svcData) setServices(svcData)
+
+          setLoading(false)
         }
 
-        // Services
-        const { data: svcData } = await supabase
-          .from('services')
-          .select('id, folio, status, created_at, costo_calculado, calidad_estrellas, firma_url, tipo_servicio, origen_coords, destino_coords, comentarios_calidad, clients(name)')
-          .eq('operator_id', user.id)
-          .order('created_at', { ascending: false })
-          .limit(20)
-        if (svcData) setServices(svcData)
+        loadData()
+        const interval = setInterval(loadData, 5000)
+        return () => clearInterval(interval)
 
       } catch (e: any) {
         setDbError(e.message || 'Error inesperado.')
-      } finally {
         setLoading(false)
       }
     })()
