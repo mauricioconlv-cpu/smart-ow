@@ -10,20 +10,23 @@ export default async function FleetPage() {
 
   const { data: { user } } = await supabase.auth.getUser()
   const { data: profile } = user
-    ? await supabase.from('profiles').select('role').eq('id', user.id).single()
+    ? await supabase.from('profiles').select('role, company_id').eq('id', user.id).single()
     : { data: null }
   const canEdit = profile?.role !== 'dispatcher'
+  const companyId = profile?.company_id
 
-  // Leer la lista de grúas
+  // Leer la lista de grúas de la empresa
   const { data: towTrucks } = await supabase
     .from('tow_trucks')
     .select('*')
+    .eq('company_id', companyId)
     .order('economic_number', { ascending: true })
 
-  // Leer todos los operadores que tienen una grúa asignada (tow_truck_id != null)
+  // Leer operadores de la misma empresa que tienen grúa asignada
   const { data: operators } = await supabase
     .from('profiles')
     .select('tow_truck_id, full_name')
+    .eq('company_id', companyId)
     .not('tow_truck_id', 'is', null)
 
   // Mapa rápido: { tow_truck_id -> full_name }
@@ -31,6 +34,7 @@ export default async function FleetPage() {
   for (const op of operators ?? []) {
     if (op.tow_truck_id) operatorByTruck[op.tow_truck_id] = op.full_name ?? 'Sin nombre'
   }
+
 
   return (
     <div className="space-y-6 max-w-6xl mx-auto">

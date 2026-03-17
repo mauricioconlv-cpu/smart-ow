@@ -53,19 +53,35 @@ export default function NewServicePage() {
 
   useEffect(() => {
     async function loadData() {
+      // Obtener empresa del usuario actual
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) return
+
+      const { data: profileData } = await supabase
+        .from('profiles')
+        .select('company_id')
+        .eq('id', user.id)
+        .single()
+
+      const companyId = profileData?.company_id
+
       const { data: cData } = await supabase
         .from('clients')
         .select('id, name, pricing_rules(*)')
+        .eq('company_id', companyId)
       if (cData) setClients(cData)
 
+      // Filtrar grúas por empresa del usuario
       const { data: tData } = await supabase
         .from('tow_trucks')
         .select('*')
         .eq('is_active', true)
+        .eq('company_id', companyId)
       if (tData) setTowTrucks(tData)
     }
     loadData()
   }, [])
+
 
   const toggleHerramienta = (val: string) => {
     setHerramientasUsadas(prev =>
