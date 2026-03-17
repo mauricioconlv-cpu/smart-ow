@@ -95,17 +95,19 @@ export default function OperatorClientLayer() {
           }
 
           // Services — solo los que están formalmente asignados y en curso
+          // NOTE: 'asignado' NO es un valor válido en el enum de la BD — removido
           const OPERATOR_VISIBLE_STATUSES = [
-            'asignado', 'rumbo_contacto', 'arribo_origen',
+            'rumbo_contacto', 'arribo_origen',
             'contacto', 'inicio_traslado', 'traslado_concluido', 'servicio_cerrado'
           ]
-          const { data: svcData } = await supabase
+          const { data: svcData, error: svcError } = await supabase
             .from('services')
             .select('id, folio, status, created_at, costo_calculado, calidad_estrellas, firma_url, tipo_servicio, origen_coords, destino_coords, comentarios_calidad, clients(name)')
             .eq('operator_id', user.id)
             .in('status', OPERATOR_VISIBLE_STATUSES)
             .order('created_at', { ascending: false })
             .limit(20)
+          if (svcError) console.error('[Operator] services query error:', svcError.message)
           if (svcData) {
             // 🔔 Sound alert when a NEW service arrives
             if (prevServiceCount.current > 0 && svcData.length > prevServiceCount.current) {
