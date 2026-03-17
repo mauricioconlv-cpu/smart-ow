@@ -242,8 +242,8 @@ export default function NewServicePage() {
   }
 
   const calculateRealDistance = async () => {
-     if (!selectedTruck || !originAddress || !destinationAddress) {
-        setCalcError('Debes seleccionar una Grúa, Origen y Destino para calcular la ruta.')
+     if (!originAddress || !destinationAddress) {
+        setCalcError('Debes ingresar una dirección de Origen y de Destino.')
         return
      }
      setIsCalculating(true)
@@ -251,9 +251,6 @@ export default function NewServicePage() {
 
      try {
        const truck = towTrucks.find(t => t.id === selectedTruck)
-       if (!truck || !truck.current_lat || !truck.current_lng) {
-          throw new Error('La grúa seleccionada no tiene coordenadas GPS válidas.')
-       }
 
        const geocode = async (address: string) => {
          const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(address)}`)
@@ -267,19 +264,34 @@ export default function NewServicePage() {
        setOriginLatLng(originCoords)
        setDestLatLng(destCoords)
 
-       const coordsString = `${truck.current_lng},${truck.current_lat};${originCoords.lng},${originCoords.lat};${destCoords.lng},${destCoords.lat}`
+       const truckHasGPS = truck && truck.current_lat && truck.current_lng
+
+       let coordsString: string
+       if (truckHasGPS) {
+         // Ruta completa: Grúa → Origen → Destino
+         coordsString = `${truck.current_lng},${truck.current_lat};${originCoords.lng},${originCoords.lat};${destCoords.lng},${destCoords.lat}`
+       } else {
+         // Ruta parcial: solo Origen → Destino
+         coordsString = `${originCoords.lng},${originCoords.lat};${destCoords.lng},${destCoords.lat}`
+       }
+
        const osrmRes = await fetch(`https://router.project-osrm.org/route/v1/driving/${coordsString}?overview=false`)
        const osrmData = await osrmRes.json()
 
-       if (osrmData.code !== 'Ok') throw new Error('Error al calcular la ruta.')
+       if (osrmData.code !== 'Ok') throw new Error('Error al calcular la ruta con OSRM.')
        const totalKm = parseFloat((osrmData.routes[0].distance / 1000).toFixed(2))
        setDistanciaAproximada(totalKm)
+
+       if (!truckHasGPS) {
+         setCalcError('⚠️ Grúa sin GPS activo — se calculó solo la ruta Origen→Destino. El ETA de arribo estará disponible cuando el operador active la ubicación.')
+       }
      } catch (err: any) {
         setCalcError(err.message || 'Error desconocido.')
      } finally {
         setIsCalculating(false)
      }
   }
+
 
   const selectedTruckData = towTrucks.find(t => t.id === selectedTruck)
   const selectedClientData = clients.find(c => c.id === selectedClient)

@@ -105,10 +105,13 @@ export default function EditUserPage() {
         const path = `${id}/avatar.${ext}`
         const { data: uploadData, error: uploadErr } = await supabase.storage
           .from('avatars')
-          .upload(path, avatarFile, { upsert: true })
-        if (!uploadErr && uploadData) {
+          .upload(path, avatarFile, { upsert: true, contentType: avatarFile.type })
+        if (uploadErr) {
+          throw new Error(`Error al subir foto: ${uploadErr.message}`)
+        }
+        if (uploadData) {
           const { data: urlData } = supabase.storage.from('avatars').getPublicUrl(path)
-          avatar_url = urlData.publicUrl
+          avatar_url = urlData.publicUrl + `?t=${Date.now()}` // cache-bust
         }
       }
 

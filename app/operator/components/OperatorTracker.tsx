@@ -7,7 +7,7 @@ interface OperatorTrackerProps {
   truckId: string
 }
 
-const UPDATE_INTERVAL_MS = 6 * 60 * 1000 // 6 minutes
+const UPDATE_INTERVAL_MS = 30 * 1000 // 30 seconds for real-time tracking
 
 export default function OperatorTracker({ operatorId, truckId }: OperatorTrackerProps) {
   const lastUpdate = useRef<number>(0)
@@ -29,14 +29,13 @@ export default function OperatorTracker({ operatorId, truckId }: OperatorTracker
       lastUpdate.current = now
 
       try {
+        // Guardar tanto el JSON como columnas individuales para compatibilidad
         await supabase.from('tow_trucks').update({
-          current_location: { lat: latitude, lng: longitude },
+          current_location:     { lat: latitude, lng: longitude },
+          current_lat:          latitude,
+          current_lng:          longitude,
           last_location_update: new Date().toISOString(),
         }).eq('id', truckId)
-
-        await supabase.from('profiles')
-          .update({ updated_at: new Date().toISOString() })
-          .eq('id', operatorId)
       } catch (_) {
         // GPS update failures are non-critical
       }
@@ -54,7 +53,16 @@ export default function OperatorTracker({ operatorId, truckId }: OperatorTracker
       )
     }, 1000)
 
-    // Poll every 6 minutes
+    // Seguimiento continuo con watchPosition para mayor precisión
+    const watchId = navigator.geolocation.watchPosition(
+      (pos) => {
+        pushLocation(pos.coords.latitude, pos.coords.longitude)
+      },
+      () => {},
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 30000 }
+    )
+
+    // Fallback interval por si watchPosition no dispara
     const intervalId = setInterval(() => {
       navigator.geolocation.getCurrentPosition(
         (pos) => {
@@ -62,11 +70,14 @@ export default function OperatorTracker({ operatorId, truckId }: OperatorTracker
           pushLocation(pos.coords.latitude, pos.coords.longitude)
         },
         () => {},
-        { enableHighAccuracy: true, timeout: 15000, maximumAge: 60000 }
+        { enableHighAccuracy: true, timeout: 15000, maximumAge: 30000 }
       )
     }, UPDATE_INTERVAL_MS)
 
-    return () => clearInterval(intervalId)
+    return () => {
+      clearInterval(intervalId)
+      navigator.geolocation.clearWatch(watchId)
+    }
   }, [operatorId, truckId]) // eslint-disable-line react-hooks/exhaustive-deps
 
   return null
