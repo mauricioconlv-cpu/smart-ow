@@ -175,7 +175,7 @@ export default function AssignPage() {
         setAssignError(res.error)
         setAssigning(null)
       } else {
-        router.push('/dashboard/services')
+        router.push(`/dashboard/services/${id}/capture?assigned=true`)
       }
     })
   }
