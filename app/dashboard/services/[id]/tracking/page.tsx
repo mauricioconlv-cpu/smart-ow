@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { createBrowserClient } from '@supabase/ssr'
 import { useParams } from 'next/navigation'
 import dynamic from 'next/dynamic'
@@ -16,14 +16,24 @@ const supabase = createBrowserClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 )
 
-// Mapa embebido dinámico (sin SSR)
-const TrackingMap = dynamic(() => import('./TrackingMap'), { ssr: false,
-  loading: () => (
-    <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#e2e8f0', borderRadius: 12 }}>
-      <Loader2 style={{ width: 24, height: 24, animation: 'spin 1s linear infinite', color: '#64748b' }} />
-    </div>
-  )
-})
+// Mapa embebido dinámico (sin SSR) — typed explicitly to avoid TS resolution errors
+import type { ComponentType } from 'react'
+interface TrackingMapProps {
+  truckGps: { lat: number; lng: number } | null
+  originCoords: Record<string, number> | null
+  destCoords: Record<string, number> | null
+}
+const TrackingMap: ComponentType<TrackingMapProps> = dynamic(
+  () => import('./TrackingMap') as Promise<{ default: ComponentType<TrackingMapProps> }>,
+  {
+    ssr: false,
+    loading: () => (
+      <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#e2e8f0', borderRadius: 12 }}>
+        <Loader2 style={{ width: 24, height: 24, animation: 'spin 1s linear infinite', color: '#64748b' }} />
+      </div>
+    )
+  }
+)
 
 const STATUS_CONFIG: Record<string, { label: string; color: string; dot: string; step: number }> = {
   creado:             { label: 'Creado',               color: '#64748b', dot: '#94a3b8', step: 0 },
@@ -57,7 +67,7 @@ export default function TrackingPage() {
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null)
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
-  const fetchData = useCallback(async () => {
+  const fetchData = async () => {
     try {
       const { data: svc, error: err } = await supabase
         .from('services')
@@ -65,7 +75,12 @@ export default function TrackingPage() {
         .eq('id', id)
         .single()
 
-      if (err || !svc) { setErrorMsg('Servicio no encontrado.'); setLoading(false); return }
+      if (err || !svc) {
+        console.error('Tracking fetch error:', err)
+        setErrorMsg('Servicio no encontrado.')
+        setLoading(false)
+        return
+      }
       setService(svc)
 
       if (svc.operator_id) {
@@ -93,17 +108,18 @@ export default function TrackingPage() {
       }
       setLastRefresh(new Date())
     } catch (e: any) {
+      console.error('Tracking exception:', e)
       setErrorMsg(e.message)
     } finally {
       setLoading(false)
     }
-  }, [id])
+  }
 
   useEffect(() => {
     fetchData()
     intervalRef.current = setInterval(fetchData, 10000)
     return () => { if (intervalRef.current) clearInterval(intervalRef.current) }
-  }, [fetchData])
+  }, [id]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const status    = service?.status ?? 'creado'
   const statusCfg = STATUS_CONFIG[status] ?? STATUS_CONFIG.creado
