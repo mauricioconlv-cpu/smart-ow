@@ -5,6 +5,7 @@ import { useState, useEffect, use } from 'react'
 import Link from 'next/link'
 import { ArrowLeft, CheckCircle2, ChevronRight, MapPin, Navigation, Loader2, Phone } from 'lucide-react'
 import { advanceServiceStatus } from './actions'
+import { useOperatorStore } from '../../store'
 
 const STEPS = [
   { id: 'rumbo_contacto',     emoji: '🚛', label: 'En Camino al Origen',     sub: 'Confirma cuando salgas hacia el lugar del siniestro' },
@@ -35,6 +36,13 @@ export default function ServiceControlPage({ params }: { params: Promise<{ id: s
   const [loading,  setLoading]  = useState(true)
   const [updating, setUpdating] = useState(false)
   const [updateError, setUpdateError] = useState('')
+
+  const { setActiveService } = useOperatorStore()
+
+  useEffect(() => {
+    setActiveService(serviceId)
+    return () => setActiveService(null)
+  }, [serviceId, setActiveService])
 
   const load = async () => {
     const { data } = await supabase

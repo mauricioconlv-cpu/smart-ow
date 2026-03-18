@@ -15,15 +15,22 @@ export default function PTTButton({ activeServiceId }: { activeServiceId?: strin
   const style = (() => {
     if (!activeServiceId) return { bg: 'bg-slate-300', label: 'Sin servicio activo' }
     switch (mode) {
-      case 'connecting': return { bg: 'bg-yellow-500 animate-pulse', label: 'Conectando...' }
-      case 'streaming':  return { bg: 'bg-green-500',               label: 'En vivo' }
-      case 'recording':  return { bg: 'bg-red-500 animate-pulse',    label: 'Grabando' }
+      case 'connecting': return { bg: 'bg-yellow-500 animate-pulse', label: 'Toca para detener...' }
+      case 'streaming':  return { bg: 'bg-green-500',               label: 'Toca para detener' }
+      case 'recording':  return { bg: 'bg-red-500 animate-pulse',    label: 'Toca para enviar' }
       case 'uploading':  return { bg: 'bg-amber-400',                label: 'Enviando...' }
-      default:           return { bg: 'bg-blue-600 hover:bg-blue-500', label: 'PTT' }
+      default:           return { bg: 'bg-blue-600 hover:bg-blue-500', label: 'Toca para hablar' }
     }
   })()
 
   const isActive = mode === 'streaming' || mode === 'recording' || mode === 'connecting'
+
+  const togglePtt = (e: React.MouseEvent | React.TouchEvent) => {
+    e.preventDefault()
+    if (isDisabled) return
+    if (isActive) stopPtt()
+    else startPtt()
+  }
 
   return (
     <div className="flex flex-col items-center">
@@ -35,11 +42,7 @@ export default function PTTButton({ activeServiceId }: { activeServiceId?: strin
       )}
 
       <button
-        onMouseDown={startPtt}
-        onMouseUp={stopPtt}
-        onMouseLeave={() => { if (isActive) stopPtt() }}
-        onTouchStart={(e) => { e.preventDefault(); startPtt() }}
-        onTouchEnd={(e) => { e.preventDefault(); stopPtt() }}
+        onClick={togglePtt}
         disabled={isDisabled}
         title={style.label}
         className={`relative p-3 rounded-full flex items-center justify-center transition-all touch-none select-none

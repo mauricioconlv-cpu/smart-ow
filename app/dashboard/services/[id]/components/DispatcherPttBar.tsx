@@ -25,6 +25,13 @@ export default function DispatcherPttBar({ serviceId }: Props) {
   const isActive  = mode === 'streaming' || mode === 'recording' || mode === 'connecting'
   const isLoading = mode === 'uploading'
 
+  const togglePtt = (e: React.MouseEvent | React.TouchEvent) => {
+    e.preventDefault()
+    if (isLoading) return
+    if (isActive) stopPtt()
+    else startPtt()
+  }
+
   if (hasMic === false) return null  // no mic → hide the bar (ServiceLog text fallback is enough)
 
   return (
@@ -50,19 +57,15 @@ export default function DispatcherPttBar({ serviceId }: Props) {
           </p>
           <p style={{ margin: 0, fontSize: 11, color: '#94a3b8' }}>
             {isActive
-              ? mode === 'connecting' ? 'Conectando...' : mode === 'streaming' ? 'Transmitiendo en vivo' : 'Grabando mensaje...'
-              : 'Mantén presionado para hablar'}
+              ? mode === 'connecting' ? 'Conectando...' : mode === 'streaming' ? 'Toca para detener' : 'Toca para enviar'
+              : 'Toca para hablar'}
           </p>
         </div>
       )}
 
       {/* PTT Button */}
       <button
-        onMouseDown={startPtt}
-        onMouseUp={stopPtt}
-        onMouseLeave={() => { if (isActive) stopPtt() }}
-        onTouchStart={(e) => { e.preventDefault(); startPtt() }}
-        onTouchEnd={(e) => { e.preventDefault(); stopPtt() }}
+        onClick={togglePtt}
         disabled={isLoading}
         style={{
           width: 54, height: 54, borderRadius: '50%', border: 'none',
