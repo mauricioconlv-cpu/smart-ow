@@ -23,6 +23,7 @@ const STATUS_MAP: Record<string, string> = {
   creado:             'Nuevo Asignado',
   rumbo_contacto:     'En camino al Origen',
   arribo_origen:      'En Sitio',
+  contacto_usuario:   'Contacto con Usuario',
   contacto:           'Maniobra / Enganche',
   inicio_traslado:    'En Traslado a Destino',
   traslado_concluido: 'Descargando...',
@@ -97,7 +98,7 @@ export default function OperatorClientLayer() {
           // Services — solo los que están formalmente asignados y en curso
           // NOTE: 'asignado' NO es un valor válido en el enum de la BD — removido
           const OPERATOR_VISIBLE_STATUSES = [
-            'rumbo_contacto', 'arribo_origen',
+            'rumbo_contacto', 'arribo_origen', 'contacto_usuario',
             'contacto', 'inicio_traslado', 'traslado_concluido', 'servicio_cerrado'
           ]
           const { data: svcData, error: svcError } = await supabase

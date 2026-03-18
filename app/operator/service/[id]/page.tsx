@@ -8,7 +8,8 @@ import { advanceServiceStatus } from './actions'
 
 const STEPS = [
   { id: 'rumbo_contacto',     emoji: '🚛', label: 'En Camino al Origen',     sub: 'Confirma cuando salgas hacia el lugar del siniestro' },
-  { id: 'arribo_origen',      emoji: '📍', label: 'Llegué al Origen',         sub: 'Confirma cuando llegues con el cliente' },
+  { id: 'arribo_origen',      emoji: '📍', label: 'Llegué al Origen',         sub: 'Confirma cuando llegues al lugar del siniestro' },
+  { id: 'contacto_usuario',   emoji: '🤝', label: 'Contacto con Usuario',     sub: 'Confirma cuando hagas contacto con el cliente' },
   { id: 'contacto',           emoji: '🔗', label: 'Maniobra / Enganche',      sub: 'Confirma cuando el vehículo esté enganchado' },
   { id: 'inicio_traslado',    emoji: '🏎️', label: 'En Traslado al Destino',  sub: 'Confirma cuando salgas con el vehículo hacia el destino' },
   { id: 'traslado_concluido', emoji: '🏁', label: 'Entregado en Destino',     sub: 'Confirma cuando hayas descargado en el destino' },
@@ -18,10 +19,11 @@ const STEPS = [
 const STATUS_INDEX: Record<string, number> = {
   rumbo_contacto:     0,
   arribo_origen:      1,
-  contacto:           2,
-  inicio_traslado:    3,
-  traslado_concluido: 4,
-  servicio_cerrado:   5,
+  contacto_usuario:   2,
+  contacto:           3,
+  inicio_traslado:    4,
+  traslado_concluido: 5,
+  servicio_cerrado:   6,
 }
 
 export default function ServiceControlPage({ params }: { params: Promise<{ id: string }> }) {

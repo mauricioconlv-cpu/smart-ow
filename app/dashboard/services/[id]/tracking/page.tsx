@@ -36,21 +36,23 @@ const TrackingMap: ComponentType<TrackingMapProps> = dynamic(
 )
 
 const STATUS_CONFIG: Record<string, { label: string; color: string; dot: string; step: number }> = {
-  creado:             { label: 'Creado',               color: '#64748b', dot: '#94a3b8', step: 0 },
-  sin_operador:       { label: 'Sin Operador',         color: '#f97316', dot: '#fb923c', step: 0 },
-  rumbo_contacto:     { label: 'En Camino al Origen',  color: '#f59e0b', dot: '#fbbf24', step: 1 },
-  arribo_origen:      { label: 'Llegó al Origen',      color: '#3b82f6', dot: '#60a5fa', step: 2 },
-  contacto:           { label: 'Maniobra / Enganche',  color: '#8b5cf6', dot: '#a78bfa', step: 3 },
-  inicio_traslado:    { label: 'En Traslado',          color: '#f97316', dot: '#fb923c', step: 4 },
-  traslado_concluido: { label: 'Entregado en Destino', color: '#10b981', dot: '#34d399', step: 5 },
-  servicio_cerrado:   { label: 'Servicio Cerrado',     color: '#6b7280', dot: '#9ca3af', step: 6 },
-  cancelado_momento:  { label: 'Cancelado al Momento', color: '#ef4444', dot: '#f87171', step: -1 },
-  cancelado_posterior:{ label: 'Cancelado Posterior',  color: '#ef4444', dot: '#f87171', step: -1 },
+  creado:             { label: 'Creado',                  color: '#64748b', dot: '#94a3b8', step: 0 },
+  sin_operador:       { label: 'Sin Operador',            color: '#f97316', dot: '#fb923c', step: 0 },
+  rumbo_contacto:     { label: 'En Camino al Origen',    color: '#f59e0b', dot: '#fbbf24', step: 1 },
+  arribo_origen:      { label: 'Llegó al Origen',        color: '#3b82f6', dot: '#60a5fa', step: 2 },
+  contacto_usuario:   { label: 'Contacto con Usuario',   color: '#6366f1', dot: '#818cf8', step: 3 },
+  contacto:           { label: 'Maniobra / Enganche',    color: '#8b5cf6', dot: '#a78bfa', step: 4 },
+  inicio_traslado:    { label: 'En Traslado',            color: '#f97316', dot: '#fb923c', step: 5 },
+  traslado_concluido: { label: 'Entregado en Destino',   color: '#10b981', dot: '#34d399', step: 6 },
+  servicio_cerrado:   { label: 'Servicio Cerrado',       color: '#6b7280', dot: '#9ca3af', step: 7 },
+  cancelado_momento:  { label: 'Cancelado al Momento',   color: '#ef4444', dot: '#f87171', step: -1 },
+  cancelado_posterior:{ label: 'Cancelado Posterior',    color: '#ef4444', dot: '#f87171', step: -1 },
 }
 
 const PROGRESS_STEPS = [
   { key: 'rumbo_contacto',     label: 'En Camino',  icon: '🚛' },
   { key: 'arribo_origen',      label: 'En Sitio',   icon: '📍' },
+  { key: 'contacto_usuario',   label: 'Contacto',   icon: '🤝' },
   { key: 'contacto',           label: 'Enganche',   icon: '🔗' },
   { key: 'inicio_traslado',    label: 'Traslado',   icon: '🏎️' },
   { key: 'traslado_concluido', label: 'Entregado',  icon: '🏁' },
