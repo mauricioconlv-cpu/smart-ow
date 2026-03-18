@@ -175,13 +175,25 @@ export default function LiveMonitorPage() {
     if (twError) setDbError(prev => prev ? `${prev} | Error trucks: ${twError.message}` : `Error trucks: ${twError.message}`)
     if (tw) setTrucks(tw.filter(t => Array.isArray(t.profiles) ? t.profiles.length > 0 : !!t.profiles))
 
-    // Despachadores
+    // Despachadores — incluir last_seen_at para detectar si están activos
     const { data: disp } = await supabase
       .from('profiles')
-      .select('id, full_name, avatar_url, created_at, supervisor_level')
+      .select('id, full_name, avatar_url, created_at, supervisor_level, last_seen_at')
       .eq('role', 'dispatcher')
       .eq('company_id', companyId)
-    if (disp) setDispatchers(disp)
+
+    if (disp) {
+      // Un despachador está "en línea" si tuvo actividad en los últimos 10 minutos
+      const TEN_MIN_MS = 10 * 60 * 1000
+      const now = Date.now()
+      const enriched = disp.map((d: any) => ({
+        ...d,
+        isOnline: d.last_seen_at
+          ? now - new Date(d.last_seen_at).getTime() < TEN_MIN_MS
+          : false,
+      }))
+      setDispatchers(enriched)
+    }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
@@ -338,18 +350,33 @@ export default function LiveMonitorPage() {
           <div className="flex items-center gap-2 px-4 py-3 border-b border-slate-100 bg-slate-50 shrink-0">
             <Radio className="w-4 h-4 text-amber-500" />
             <span className="font-bold text-sm text-slate-700">Cabina / Despachadores</span>
-            <span className="ml-auto text-xs font-bold text-amber-600">{dispatchers.length} en línea</span>
+            <span className="ml-auto text-xs font-bold text-amber-600">
+              {dispatchers.filter((d: any) => d.isOnline).length} en línea
+            </span>
           </div>
           <div className="flex-1 overflow-y-auto divide-y divide-slate-50 p-2 space-y-1">
             {dispatchers.length === 0 && (
               <p className="text-center text-slate-400 text-xs py-6">Sin despachadores registrados</p>
             )}
-            {dispatchers.map(d => (
+            {/* Online dispatchers first */}
+            {dispatchers.filter((d: any) => d.isOnline).map((d: any) => (
               <PersonnelRow
                 key={d.id}
                 name={d.full_name}
                 sub={d.supervisor_level >= 1 ? `Supervisor Nv.${d.supervisor_level}` : 'Despachador / Call Center'}
                 online={true}
+                avatarUrl={d.avatar_url}
+                badge={d.supervisor_level >= 1 ? 'supervisor' : undefined}
+                canForceLogout={false}
+              />
+            ))}
+            {/* Offline dispatchers */}
+            {dispatchers.filter((d: any) => !d.isOnline).map((d: any) => (
+              <PersonnelRow
+                key={d.id}
+                name={d.full_name}
+                sub={d.supervisor_level >= 1 ? `Supervisor Nv.${d.supervisor_level}` : 'Despachador / Call Center'}
+                online={false}
                 avatarUrl={d.avatar_url}
                 badge={d.supervisor_level >= 1 ? 'supervisor' : undefined}
                 canForceLogout={false}

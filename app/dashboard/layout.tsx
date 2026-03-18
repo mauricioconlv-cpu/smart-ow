@@ -6,6 +6,7 @@ import EmergencyNotifier from './components/EmergencyNotifier'
 import WelcomeBanner from './components/WelcomeBanner'
 import SidebarLogo from './components/SidebarLogo'
 import NavItemClient from './components/NavItemClient'
+import DashboardHeartbeat from './components/DashboardHeartbeat'
 
 export default async function DashboardLayout({
   children,
@@ -111,6 +112,7 @@ export default async function DashboardLayout({
           {children}
         </div>
       </main>
+      <DashboardHeartbeat />
     </div>
   )
 }
