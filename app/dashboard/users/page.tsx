@@ -5,6 +5,7 @@ import UserRowActions from './components/UserRowActions'
 import PasswordRequestsPanel from './components/PasswordRequestsPanel'
 import SuperadminAnalytics from './components/SuperadminAnalytics'
 import RegistrationRequestsPanel from './components/RegistrationRequestsPanel'
+import DispatcherLevelSelector from './components/DispatcherLevelSelector'
 
 export default async function UsersPage() {
   const supabase = await createClient()
@@ -26,7 +27,7 @@ export default async function UsersPage() {
       .select(`
         id, full_name, role, phone, nss, avatar_url,
         salario_mensual, hora_entrada, hora_salida,
-        tipo_jornada, dias_descanso, grua_asignada, created_at,
+        tipo_jornada, dias_descanso, grua_asignada, supervisor_level, created_at,
         companies ( name )
       `)
       .order('created_at', { ascending: false })
@@ -137,6 +138,13 @@ export default async function UsersPage() {
                               <MapPin className="h-3 w-3" />Unidad: {profile.grua_asignada}
                             </span>
                           )}
+                          {profile.role === 'dispatcher' && (
+                            <DispatcherLevelSelector
+                              userId={profile.id}
+                              currentLevel={(profile as any).supervisor_level ?? 0}
+                              isAdmin={true}
+                            />
+                          )}
                         </div>
                       </div>
                       <UserRowActions userId={profile.id} fullName={profile.full_name || 'Sin Nombre'} isSelf={user.id === profile.id} role={profile.role} />
@@ -167,6 +175,7 @@ export default async function UsersPage() {
       tipo_jornada,
       dias_descanso,
       grua_asignada,
+      supervisor_level,
       created_at,
       companies ( name )
     `)
@@ -321,6 +330,13 @@ export default async function UsersPage() {
                           <MapPin className="h-3 w-3" />
                           Unidad: {profile.grua_asignada}
                         </span>
+                      )}
+                      {profile.role === 'dispatcher' && (
+                        <DispatcherLevelSelector
+                          userId={profile.id}
+                          currentLevel={(profile as any).supervisor_level ?? 0}
+                          isAdmin={canInvite}
+                        />
                       )}
                     </div>
                   </div>
