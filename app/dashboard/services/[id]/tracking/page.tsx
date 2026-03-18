@@ -10,6 +10,7 @@ import {
   MessageSquare, FileText, AlertCircle, Send, ExternalLink,
 } from 'lucide-react'
 import ServiceLog from '../components/ServiceLog'
+import DispatcherPttBar from '../components/DispatcherPttBar'
 
 const supabase = createBrowserClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -353,6 +354,9 @@ export default function TrackingPage() {
           <InfoField label="Costo Calculado" value={service.costo_calculado != null ? `$${Number(service.costo_calculado).toLocaleString('es-MX', { minimumFractionDigits: 2 })}` : null} />
         </div>
       </div>
+
+      {/* ── Dispatcher PTT Reply Bar ── */}
+      <DispatcherPttBar serviceId={id} />
 
       {/* ── Bitácora ── */}
       <ServiceLog serviceId={id} canAddNotes={true} />

@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import dynamic from 'next/dynamic'
-import { MapPin, Truck, Radio, Users, LogOut, X, AlertTriangle, Shield, Loader2 } from 'lucide-react'
+import { MapPin, Truck, Radio, Users, LogOut, X, AlertTriangle, Shield, Loader2, Mic } from 'lucide-react'
 
 const LiveMap = dynamic(() => import('./components/Map'), {
   ssr: false,
@@ -119,6 +119,7 @@ export default function LiveMonitorPage() {
   const [modalOperator, setModalOperator] = useState<{ id: string; full_name: string; grua_asignada: string | null } | null>(null)
   const [isLoggingOut, setIsLoggingOut] = useState(false)
   const [logoutMessage, setLogoutMessage] = useState<{ text: string; ok: boolean } | null>(null)
+  const [audioAlerts, setAudioAlerts] = useState<Record<string, number>>({}) // operatorId -> timestamp
 
   const supabase = createClient()
 
@@ -201,6 +202,36 @@ export default function LiveMonitorPage() {
     const interval = setInterval(fetchPersonnel, 30000)
     return () => clearInterval(interval)
   }, [fetchPersonnel])
+
+  // Suscripción a notas de voz (PTT)
+  useEffect(() => {
+    const channel = supabase
+      .channel('monitor-audio-alerts')
+      .on('postgres_changes', {
+        event: 'INSERT', schema: 'public', table: 'service_logs', filter: "type=eq.audio_ptt"
+      }, (payload) => {
+        const opId = payload.new.created_by
+        if (opId) {
+          setAudioAlerts(prev => ({ ...prev, [opId]: Date.now() }))
+        }
+      })
+      .subscribe()
+
+    // Limpiar alertas después de 30 segundos
+    const timer = setInterval(() => {
+      setAudioAlerts(prev => {
+        const now = Date.now()
+        let changed = false
+        const next = { ...prev }
+        for (const [id, time] of Object.entries(next)) {
+          if (now - time > 30000) { delete next[id]; changed = true }
+        }
+        return changed ? next : prev
+      })
+    }, 5000)
+
+    return () => { supabase.removeChannel(channel); clearInterval(timer) }
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Ejecutar cierre forzado
   const handleForceLogout = async (operatorId: string) => {
@@ -302,6 +333,8 @@ export default function LiveMonitorPage() {
                 avatarUrl={op.avatar_url}
                 canForceLogout={canForceLogout}
                 onForceLogout={() => setModalOperator({ id: op.id, full_name: op.full_name, grua_asignada: op.grua_asignada })}
+                hasAudioAlert={audioAlerts[op.id] !== undefined}
+                onClearAudioAlert={() => setAudioAlerts(prev => { const n = {...prev}; delete n[op.id]; return n; })}
               />
             ))}
             {offlineOps.map(op => (
@@ -390,9 +423,8 @@ export default function LiveMonitorPage() {
   )
 }
 
-// ── PersonnelRow ──────────────────────────────────────────────────────────────
 function PersonnelRow({
-  name, sub, online, icon, avatarUrl, badge, canForceLogout, onForceLogout,
+  name, sub, online, icon, avatarUrl, badge, canForceLogout, onForceLogout, hasAudioAlert, onClearAudioAlert,
 }: {
   name: string
   sub: string
@@ -402,6 +434,8 @@ function PersonnelRow({
   badge?: 'supervisor'
   canForceLogout?: boolean
   onForceLogout?: () => void
+  hasAudioAlert?: boolean
+  onClearAudioAlert?: () => void
 }) {
   return (
     <div className={`flex items-center gap-3 px-3 py-2.5 rounded-lg ${online ? 'bg-white' : 'bg-slate-50 opacity-60'}`}>
@@ -429,8 +463,16 @@ function PersonnelRow({
         <p className="text-xs text-slate-500 truncate">{sub}</p>
       </div>
 
-      {/* Botón forzar cierre (solo operadores online y usuario con permisos) */}
-      {canForceLogout && onForceLogout ? (
+      {/* Alerta de audio (PTT) */}
+      {hasAudioAlert ? (
+        <button
+          onClick={onClearAudioAlert}
+          title="Nuevo mensaje de voz recibido"
+          className="flex-shrink-0 animate-pulse bg-red-100 border border-red-300 rounded-full w-8 h-8 flex items-center justify-center cursor-pointer transition-colors hover:bg-red-200"
+        >
+          <Mic className="w-4 h-4 text-red-600" />
+        </button>
+      ) : canForceLogout && onForceLogout ? (
         <button
           onClick={onForceLogout}
           title="Forzar cierre de turno"

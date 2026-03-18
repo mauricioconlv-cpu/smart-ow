@@ -4,7 +4,7 @@ import { useState, useEffect, useTransition } from 'react'
 import { createBrowserClient } from '@supabase/ssr'
 import { addManualNote } from '../capture/actions'
 import {
-  Lock, Truck, RefreshCw, FileText, Send, Loader2, AlertCircle
+  Lock, Truck, RefreshCw, FileText, Send, Loader2, AlertCircle, Mic
 } from 'lucide-react'
 
 const supabase = createBrowserClient(
@@ -12,12 +12,13 @@ const supabase = createBrowserClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 )
 
-const TYPE_CONFIG: Record<string, { icon: React.ElementType; color: string; bg: string }> = {
-  edit_unlock:   { icon: Lock,      color: 'text-amber-600',  bg: 'bg-amber-50  border-amber-200'  },
-  assignment:    { icon: Truck,     color: 'text-blue-600',   bg: 'bg-blue-50   border-blue-200'   },
-  status_change: { icon: RefreshCw, color: 'text-violet-600', bg: 'bg-violet-50 border-violet-200' },
-  manual_note:   { icon: FileText,  color: 'text-slate-600',  bg: 'bg-white     border-slate-200'  },
-  system_note:   { icon: RefreshCw, color: 'text-slate-500',  bg: 'bg-slate-50  border-slate-200'  },
+const TYPE_CONFIG: Record<string, { label: string; color: string; bg: string; emoji?: string }> = {
+  edit_unlock:   { label: 'Desbloqueo',       color: 'text-amber-600',  bg: 'bg-amber-50  border-amber-200'  },
+  assignment:    { label: 'Asignación',        color: 'text-blue-600',   bg: 'bg-blue-50   border-blue-200'   },
+  status_change: { label: 'Cambio de estado', color: 'text-violet-600', bg: 'bg-violet-50 border-violet-200' },
+  manual_note:   { label: 'Nota',             color: 'text-slate-600',  bg: 'bg-white     border-slate-200'  },
+  system_note:   { label: 'Sistema',          color: 'text-slate-500',  bg: 'bg-slate-50  border-slate-200'  },
+  audio_ptt:     { label: 'Audio PTT',        color: 'text-purple-600', bg: 'bg-purple-50 border-purple-200', emoji: '🎤' },
 }
 
 interface LogEntry {
@@ -27,12 +28,13 @@ interface LogEntry {
   event_label: string | null
   actor_role: string | null
   created_at: string
+  resource_url: string | null
   profiles: { full_name: string | null } | null
 }
 
 interface ServiceLogProps {
   serviceId: string
-  canAddNotes: boolean   // call center o operator, según módulo
+  canAddNotes: boolean
 }
 
 export default function ServiceLog({ serviceId, canAddNotes }: ServiceLogProps) {
@@ -45,7 +47,7 @@ export default function ServiceLog({ serviceId, canAddNotes }: ServiceLogProps) 
   const fetchLogs = async () => {
     const { data } = await supabase
       .from('service_logs')
-      .select('id, type, note, event_label, actor_role, created_at, profiles(full_name)')
+      .select('id, type, note, event_label, actor_role, created_at, resource_url, profiles(full_name)')
       .eq('service_id', serviceId)
       .order('created_at', { ascending: true })
     if (data) setLogs(data.map((d: any) => ({
@@ -57,7 +59,6 @@ export default function ServiceLog({ serviceId, canAddNotes }: ServiceLogProps) 
 
   useEffect(() => {
     fetchLogs()
-    // Suscripción en tiempo real
     const channel = supabase
       .channel(`logs_${serviceId}`)
       .on('postgres_changes', {
@@ -66,7 +67,7 @@ export default function ServiceLog({ serviceId, canAddNotes }: ServiceLogProps) 
       }, () => fetchLogs())
       .subscribe()
     return () => { supabase.removeChannel(channel) }
-  }, [serviceId])
+  }, [serviceId]) // eslint-disable-line react-hooks/exhaustive-deps
 
   function handleAddNote() {
     if (!noteText.trim()) return
@@ -94,7 +95,7 @@ export default function ServiceLog({ serviceId, canAddNotes }: ServiceLogProps) 
       </div>
 
       {/* Entries */}
-      <div className="max-h-80 overflow-y-auto divide-y divide-slate-50 p-3 space-y-2">
+      <div className="max-h-96 overflow-y-auto divide-y divide-slate-50 p-3 space-y-2">
         {loading && (
           <div className="flex items-center justify-center py-8">
             <Loader2 className="w-5 h-5 animate-spin text-slate-400" />
@@ -105,20 +106,54 @@ export default function ServiceLog({ serviceId, canAddNotes }: ServiceLogProps) 
         )}
         {logs.map(log => {
           const cfg = TYPE_CONFIG[log.type] ?? TYPE_CONFIG.manual_note
-          const Icon = cfg.icon
+          const isAudio = log.type === 'audio_ptt'
           return (
             <div key={log.id} className={`flex gap-3 p-3 rounded-lg border ${cfg.bg}`}>
-              <div className={`flex-shrink-0 mt-0.5 ${cfg.color}`}>
-                <Icon className="w-4 h-4" />
-              </div>
-              <div className="flex-1 min-w-0">
-                {log.event_label && (
-                  <p className={`text-xs font-bold mb-0.5 ${cfg.color}`}>{log.event_label}</p>
+              {/* Icon / Emoji */}
+              <div className={`flex-shrink-0 mt-0.5 ${cfg.color} text-base`}>
+                {cfg.emoji ?? (
+                  log.type === 'edit_unlock'   ? <Lock className="w-4 h-4" /> :
+                  log.type === 'assignment'    ? <Truck className="w-4 h-4" /> :
+                  log.type === 'status_change' ? <RefreshCw className="w-4 h-4" /> :
+                  <FileText className="w-4 h-4" />
                 )}
-                <p className="text-sm text-slate-700 leading-snug">{log.note}</p>
+              </div>
+
+              <div className="flex-1 min-w-0">
+                {/* Event label */}
+                {(log.event_label || isAudio) && (
+                  <p className={`text-xs font-bold mb-0.5 ${cfg.color}`}>
+                    {log.event_label ?? cfg.label}
+                  </p>
+                )}
+
+                {/* Transcription text */}
+                {log.note && (
+                  <p className="text-sm text-slate-700 leading-snug">{log.note}</p>
+                )}
+
+                {/* Audio player — only for audio_ptt with resource_url */}
+                {isAudio && log.resource_url && (
+                  <div className="mt-2">
+                    <audio
+                      controls
+                      preload="none"
+                      className="w-full h-9"
+                      style={{ borderRadius: 8 }}
+                    >
+                      <source src={log.resource_url} type="audio/webm" />
+                      <source src={log.resource_url} type="audio/ogg" />
+                      Tu navegador no soporta audio.
+                    </audio>
+                  </div>
+                )}
+
+                {/* Meta */}
                 <p className="text-[11px] text-slate-400 mt-1">
                   {log.profiles?.full_name ?? 'Sistema'}
-                  {log.actor_role && <span className="ml-1 capitalize opacity-70">({log.actor_role})</span>}
+                  {log.actor_role && (
+                    <span className="ml-1 capitalize opacity-70">({log.actor_role})</span>
+                  )}
                   {' · '}
                   {formatTime(log.created_at)}
                 </p>
@@ -128,7 +163,7 @@ export default function ServiceLog({ serviceId, canAddNotes }: ServiceLogProps) 
         })}
       </div>
 
-      {/* Input manual */}
+      {/* Text note input */}
       {canAddNotes && (
         <div className="border-t border-slate-200 p-3 bg-slate-50 space-y-2">
           {noteErr && (
