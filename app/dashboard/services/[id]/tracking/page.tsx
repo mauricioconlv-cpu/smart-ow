@@ -71,7 +71,7 @@ export default function TrackingPage() {
     try {
       const { data: svc, error: err } = await supabase
         .from('services')
-        .select('*, clients(name, phone)')
+        .select('*, clients(name)')
         .eq('id', id)
         .single()
 
