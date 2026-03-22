@@ -3,7 +3,10 @@
 import { createClient } from '@/lib/supabase/client'
 import { useState, useEffect, use } from 'react'
 import Link from 'next/link'
-import { ArrowLeft, CheckCircle2, ChevronRight, MapPin, Navigation, Loader2, Phone } from 'lucide-react'
+import {
+  ArrowLeft, CheckCircle2, ChevronRight, MapPin, Navigation,
+  Loader2, Phone, Mailbox, Send, MessageSquare, X
+} from 'lucide-react'
 import { advanceServiceStatus } from './actions'
 import { useOperatorStore } from '../../store'
 
@@ -16,7 +19,6 @@ const STEPS = [
   { id: 'traslado_concluido', emoji: '🏁', label: 'Entregado en Destino',     sub: 'Confirma cuando hayas descargado en el destino' },
 ]
 
-// Map status to step index (-1 = before first step)
 const STATUS_INDEX: Record<string, number> = {
   rumbo_contacto:     0,
   arribo_origen:      1,
@@ -27,15 +29,31 @@ const STATUS_INDEX: Record<string, number> = {
   servicio_cerrado:   6,
 }
 
+interface CabinMessage {
+  id: string
+  type: string
+  note: string
+  event_label: string | null
+  actor_role: string | null
+  resource_url: string | null
+  created_at: string
+}
+
 export default function ServiceControlPage({ params }: { params: Promise<{ id: string }> }) {
-  // Next.js 15: params is a Promise
   const { id: serviceId } = use(params)
   const supabase = createClient()
 
-  const [service, setService] = useState<any>(null)
-  const [loading,  setLoading]  = useState(true)
-  const [updating, setUpdating] = useState(false)
+  const [service,     setService]     = useState<any>(null)
+  const [loading,     setLoading]     = useState(true)
+  const [updating,    setUpdating]    = useState(false)
   const [updateError, setUpdateError] = useState('')
+
+  // Cabin messages (voicemail_ptt from dispatcher + operator_reply from dispatcher)
+  const [cabinMsgs,   setCabinMsgs]   = useState<CabinMessage[]>([])
+  const [replyOpen,   setReplyOpen]   = useState<Record<string, boolean>>({})
+  const [replyText,   setReplyText]   = useState<Record<string, string>>({})
+  const [replySaving, setReplySaving] = useState<Record<string, boolean>>({})
+  const [newMsgCount, setNewMsgCount] = useState(0)
 
   const { setActiveService } = useOperatorStore()
 
@@ -54,10 +72,48 @@ export default function ServiceControlPage({ params }: { params: Promise<{ id: s
     setLoading(false)
   }
 
+  // Load cabin messages: voicemail_ptt from dispatcher AND dispatcher replies
+  const loadCabinMsgs = async () => {
+    const { data } = await supabase
+      .from('service_logs')
+      .select('id, type, note, event_label, actor_role, resource_url, created_at')
+      .eq('service_id', serviceId)
+      .in('type', ['voicemail_ptt', 'operator_reply'])
+      .eq('actor_role', 'dispatcher')          // ← only dispatcher side
+      .order('created_at', { ascending: true })
+    if (data) {
+      const msgs = data as CabinMessage[]
+      setCabinMsgs(msgs)
+    }
+  }
+
   useEffect(() => {
     load()
+    loadCabinMsgs()
+
     const interval = setInterval(load, 6000)
-    return () => clearInterval(interval)
+
+    // Real-time: listen for new voicemail_ptt from dispatcher
+    const logChannel = supabase
+      .channel(`operator_cabin_msgs_${serviceId}`)
+      .on('postgres_changes', {
+        event: 'INSERT', schema: 'public', table: 'service_logs',
+        filter: `service_id=eq.${serviceId}`,
+      }, (payload: any) => {
+        const row = payload.new
+        if (row.actor_role === 'dispatcher') {
+          loadCabinMsgs()
+          if (row.type === 'voicemail_ptt') {
+            setNewMsgCount(c => c + 1)
+          }
+        }
+      })
+      .subscribe()
+
+    return () => {
+      clearInterval(interval)
+      supabase.removeChannel(logChannel)
+    }
   }, [serviceId]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleAdvance = async (nextStatus: string) => {
@@ -69,7 +125,31 @@ export default function ServiceControlPage({ params }: { params: Promise<{ id: s
     setUpdating(false)
   }
 
-  // ── Loading
+  async function handleReply(msgId: string) {
+    const text = (replyText[msgId] ?? '').trim()
+    if (!text) return
+    setReplySaving(prev => ({ ...prev, [msgId]: true }))
+    try {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) throw new Error('no auth')
+      await supabase.from('service_logs').insert({
+        service_id:  serviceId,
+        created_by:  user.id,
+        type:        'operator_reply',
+        note:        text,
+        actor_role:  'operator',
+        event_label: '💬 Operador respondió a la cabina',
+      })
+      setReplyText(prev  => ({ ...prev, [msgId]: '' }))
+      setReplyOpen(prev  => ({ ...prev, [msgId]: false }))
+    } catch (e: any) {
+      console.error('[Operator reply] error:', e.message)
+    } finally {
+      setReplySaving(prev => ({ ...prev, [msgId]: false }))
+    }
+  }
+
+  // ── Loading ────────────────────────────────────────────────────────────
   if (loading) return (
     <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: '#f8fafc' }}>
       <div style={{ width: 36, height: 36, borderRadius: '50%', border: '4px solid #bfdbfe', borderTopColor: '#3b82f6', animation: 'spin 0.8s linear infinite' }} />
@@ -86,10 +166,10 @@ export default function ServiceControlPage({ params }: { params: Promise<{ id: s
 
   const currentIdx = STATUS_INDEX[service.status] ?? -1
   const isClosed   = service.status === 'servicio_cerrado'
-
-  // Next action button
-  const nextStep = currentIdx < STEPS.length ? STEPS[currentIdx + 1] ?? null : null
+  const nextStep   = currentIdx < STEPS.length ? STEPS[currentIdx + 1] ?? null : null
   const currentStep = STEPS[currentIdx] ?? null
+
+  const hasNewCabinMsgs = newMsgCount > 0
 
   return (
     <div style={{ minHeight: '100vh', background: '#f1f5f9', paddingBottom: 120 }}>
@@ -103,6 +183,20 @@ export default function ServiceControlPage({ params }: { params: Promise<{ id: s
           <p style={{ margin: 0, fontSize: 11, fontWeight: 700, color: '#3b82f6', textTransform: 'uppercase' }}>FOLIO #{service.folio}</p>
           <h1 style={{ margin: 0, fontSize: 16, fontWeight: 800, color: '#0f172a' }}>{service.clients?.name ?? 'Servicio'}</h1>
         </div>
+        {/* New message badge in header */}
+        {hasNewCabinMsgs && (
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 4,
+            background: '#dcfce7', color: '#15803d',
+            padding: '4px 10px', borderRadius: 20,
+            fontSize: 11, fontWeight: 800,
+            animation: 'cabinPulse 1s ease-in-out infinite',
+          }}>
+            <Mailbox style={{ width: 13, height: 13 }} />
+            {newMsgCount} nuevo{newMsgCount > 1 ? 's' : ''}
+          </div>
+        )}
+        <style>{`@keyframes cabinPulse{0%,100%{opacity:1}50%{opacity:0.5}}`}</style>
       </div>
 
       <div style={{ padding: '16px', maxWidth: 500, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -127,6 +221,145 @@ export default function ServiceControlPage({ params }: { params: Promise<{ id: s
             <div>
               <p style={{ margin: 0, fontSize: 11, fontWeight: 700, color: '#16a34a', textTransform: 'uppercase' }}>Servicio Completado</p>
               <p style={{ margin: 0, fontSize: 17, fontWeight: 800, color: '#14532d' }}>¡Servicio cerrado!</p>
+            </div>
+          </div>
+        )}
+
+        {/* ── Mensajes de la Cabina ─────────────────────────────────────── */}
+        {cabinMsgs.length > 0 && (
+          <div style={{
+            background: 'white', borderRadius: 16,
+            border: hasNewCabinMsgs ? '2px solid #4ade80' : '1px solid #e2e8f0',
+            overflow: 'hidden',
+            boxShadow: hasNewCabinMsgs ? '0 0 0 4px rgba(74,222,128,0.15)' : 'none',
+            transition: 'all 0.3s',
+          }}>
+            {/* Section header */}
+            <div style={{
+              padding: '12px 18px',
+              background: hasNewCabinMsgs ? '#f0fdf4' : '#f8fafc',
+              borderBottom: '1px solid #e2e8f0',
+              display: 'flex', alignItems: 'center', gap: 8,
+            }}>
+              <Mailbox style={{ width: 16, height: 16, color: hasNewCabinMsgs ? '#16a34a' : '#64748b' }} />
+              <span style={{ fontSize: 12, fontWeight: 800, color: hasNewCabinMsgs ? '#15803d' : '#475569', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                Mensajes de la Cabina
+              </span>
+              {hasNewCabinMsgs && (
+                <span style={{
+                  marginLeft: 'auto', fontSize: 10, fontWeight: 800,
+                  background: '#16a34a', color: 'white',
+                  padding: '2px 8px', borderRadius: 10,
+                }}>
+                  {newMsgCount} NUEVO{newMsgCount > 1 ? 'S' : ''}
+                </span>
+              )}
+              {/* Dismiss badge */}
+              {hasNewCabinMsgs && (
+                <button
+                  onClick={() => setNewMsgCount(0)}
+                  style={{ marginLeft: 4, background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8' }}
+                >
+                  <X style={{ width: 14, height: 14 }} />
+                </button>
+              )}
+            </div>
+
+            {/* Messages list */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
+              {cabinMsgs.map((msg, i) => {
+                const isVoicemail = msg.type === 'voicemail_ptt'
+                const isDispReply = msg.type === 'operator_reply' // dispatcher's reply shown in-thread
+
+                return (
+                  <div key={msg.id} style={{
+                    padding: '14px 18px',
+                    borderBottom: i < cabinMsgs.length - 1 ? '1px solid #f1f5f9' : 'none',
+                    background: isVoicemail ? '#fafafa' : '#f0fdf4',
+                  }}>
+                    {/* Label */}
+                    <p style={{ margin: '0 0 6px', fontSize: 10, fontWeight: 800, color: isVoicemail ? '#6366f1' : '#16a34a', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                      {isVoicemail ? '📬 Mensaje de Cabina' : '💬 Respuesta de Cabina'}
+                    </p>
+
+                    {/* Transcription text */}
+                    {msg.note && (
+                      <p style={{ margin: '0 0 8px', fontSize: 14, color: '#1e293b', lineHeight: 1.5 }}>
+                        {msg.note}
+                      </p>
+                    )}
+
+                    {/* Audio player */}
+                    {isVoicemail && msg.resource_url && (
+                      <audio controls preload="none" style={{ width: '100%', height: 36, borderRadius: 8, marginBottom: 8 }}>
+                        <source src={msg.resource_url} type="audio/webm" />
+                        <source src={msg.resource_url} type="audio/ogg" />
+                      </audio>
+                    )}
+
+                    {/* Time */}
+                    <p style={{ margin: '0 0 8px', fontSize: 11, color: '#94a3b8' }}>
+                      {new Date(msg.created_at).toLocaleString('es-MX', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                    </p>
+
+                    {/* Reply button (only for voicemail_ptt) */}
+                    {isVoicemail && (
+                      replyOpen[msg.id] ? (
+                        <div style={{ display: 'flex', gap: 8, marginTop: 6 }}>
+                          <input
+                            type="text"
+                            value={replyText[msg.id] ?? ''}
+                            onChange={e => setReplyText(prev => ({ ...prev, [msg.id]: e.target.value }))}
+                            onKeyDown={e => { if (e.key === 'Enter') handleReply(msg.id) }}
+                            placeholder="Escribe tu respuesta..."
+                            autoFocus
+                            style={{
+                              flex: 1, fontSize: 14, border: '1.5px solid #6366f1',
+                              borderRadius: 10, padding: '10px 14px', color: '#1e293b',
+                              outline: 'none', background: 'white',
+                            }}
+                          />
+                          <button
+                            onClick={() => handleReply(msg.id)}
+                            disabled={replySaving[msg.id] || !(replyText[msg.id] ?? '').trim()}
+                            style={{
+                              flexShrink: 0, width: 44, height: 44, borderRadius: 10,
+                              background: '#6366f1', border: 'none', cursor: 'pointer',
+                              display: 'flex', alignItems: 'center', justifyContent: 'center',
+                              opacity: replySaving[msg.id] ? 0.6 : 1,
+                            }}
+                          >
+                            {replySaving[msg.id]
+                              ? <Loader2 style={{ width: 18, height: 18, color: 'white', animation: 'spin 1s linear infinite' }} />
+                              : <Send style={{ width: 18, height: 18, color: 'white' }} />
+                            }
+                          </button>
+                          <button
+                            onClick={() => setReplyOpen(prev => ({ ...prev, [msg.id]: false }))}
+                            style={{ fontSize: 11, color: '#94a3b8', background: 'none', border: 'none', cursor: 'pointer' }}
+                          >
+                            ✕
+                          </button>
+                          <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
+                        </div>
+                      ) : (
+                        <button
+                          onClick={() => setReplyOpen(prev => ({ ...prev, [msg.id]: true }))}
+                          style={{
+                            display: 'flex', alignItems: 'center', gap: 6,
+                            fontSize: 12, fontWeight: 700, color: '#6366f1',
+                            background: '#eef2ff', border: '1px solid #c7d2fe',
+                            borderRadius: 8, padding: '6px 12px', cursor: 'pointer',
+                          }}
+                        >
+                          <MessageSquare style={{ width: 13, height: 13 }} />
+                          Responder a la cabina
+                        </button>
+                      )
+                    )}
+                  </div>
+                )
+              })}
             </div>
           </div>
         )}
@@ -161,14 +394,11 @@ export default function ServiceControlPage({ params }: { params: Promise<{ id: s
             {STEPS.map((step, i) => {
               const done    = i <  currentIdx
               const current = i === currentIdx
-              const future  = i >  currentIdx
               return (
                 <div key={step.id} style={{ display: 'flex', gap: 14, position: 'relative' }}>
-                  {/* Connector line */}
                   {i < STEPS.length - 1 && (
                     <div style={{ position: 'absolute', left: 17, top: 34, bottom: -10, width: 2, background: done ? '#3b82f6' : '#e2e8f0', zIndex: 0 }} />
                   )}
-                  {/* Circle */}
                   <div style={{
                     width: 36, height: 36, borderRadius: '50%', flexShrink: 0, zIndex: 1,
                     background: done ? '#3b82f6' : current ? '#fff' : '#f1f5f9',
@@ -178,7 +408,6 @@ export default function ServiceControlPage({ params }: { params: Promise<{ id: s
                   }}>
                     {done ? <CheckCircle2 style={{ width: 18, height: 18, color: 'white' }} /> : <span>{step.emoji}</span>}
                   </div>
-                  {/* Text */}
                   <div style={{ flex: 1, paddingBottom: 20, paddingTop: 6 }}>
                     <p style={{ margin: 0, fontSize: 14, fontWeight: current ? 800 : done ? 600 : 400, color: current ? '#1d4ed8' : done ? '#0f172a' : '#94a3b8' }}>
                       {step.label}
@@ -245,7 +474,6 @@ export default function ServiceControlPage({ params }: { params: Promise<{ id: s
               <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
             </button>
           ) : (
-            /* traslado_concluido → go to close/signature */
             <Link
               href={`/operator/service/${serviceId}/close`}
               style={{

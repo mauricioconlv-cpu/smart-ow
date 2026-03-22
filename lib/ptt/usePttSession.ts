@@ -23,6 +23,7 @@ export interface UsePttSessionReturn {
   stopPtt: () => Promise<void>
   transcript: string
   incomingActive: boolean  // true when receiving a peer's stream
+  isPeerPresent: boolean   // true when the other role has the same expediente open
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -43,6 +44,7 @@ export function usePttSession({ serviceId, role }: UsePttSessionOptions): UsePtt
   const [mode, setMode]               = useState<PttMode>('idle')
   const [transcript, setTranscript]   = useState('')
   const [incomingActive, setIncoming] = useState(false)
+  const [isPeerPresent, setPeerPresent] = useState(false)
 
   // Refs — not triggering re-renders
   const pcRef              = useRef<RTCPeerConnection | null>(null)
@@ -64,12 +66,27 @@ export function usePttSession({ serviceId, role }: UsePttSessionOptions): UsePtt
     return () => { remoteAudioRef.current = null }
   }, [])
 
-  // ── Signaling channel ───────────────────────────────────────────────────
+  // ── Signaling + Presence channel ───────────────────────────────────────
   useEffect(() => {
     if (!serviceId) return
 
+    const peerRole = role === 'operator' ? 'dispatcher' : 'operator'
+
     const ch = supabase.channel(`ptt:${serviceId}`, {
-      config: { broadcast: { self: false } },
+      config: {
+        broadcast: { self: false },
+        presence:  { key: role },
+      },
+    })
+
+    // ── Presence: track when this peer joins/leaves ─────────────────────
+    ch.on('presence', { event: 'sync' }, () => {
+      const state = ch.presenceState<{ role: string }>()
+      const peerKeys = Object.keys(state).filter(k => k !== role)
+      const peerOnline = peerKeys.some(k =>
+        (state[k] as any[]).some((p: any) => p.role === peerRole)
+      )
+      setPeerPresent(peerOnline)
     })
 
     // Receive offer from peer → answer it
@@ -112,10 +129,20 @@ export function usePttSession({ serviceId, role }: UsePttSessionOptions): UsePtt
       if (mode === 'receiving') setMode('idle')
     })
 
-    ch.subscribe()
+    ch.subscribe(async (status) => {
+      if (status === 'SUBSCRIBED') {
+        // Announce presence
+        await ch.track({ role })
+      }
+    })
     channelRef.current = ch
 
-    return () => { supabase.removeChannel(ch); channelRef.current = null }
+    return () => {
+      ch.untrack()
+      supabase.removeChannel(ch)
+      channelRef.current = null
+      setPeerPresent(false)
+    }
   }, [serviceId]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Helper: build RTCPeerConnection ────────────────────────────────────
@@ -168,12 +195,18 @@ export function usePttSession({ serviceId, role }: UsePttSessionOptions): UsePtt
   }
 
   // ── Upload blob + log ───────────────────────────────────────────────────
-  async function uploadAndLog(blob: Blob, finalTranscript: string) {
+  // peerWasPresent: when true → WebRTC was live (audio_ptt); false → voicemail
+  async function uploadAndLog(blob: Blob, finalTranscript: string, peerWasPresent: boolean) {
     if (!serviceId) return
     setMode('uploading')
     try {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) throw new Error('no auth')
+
+      const logType    = peerWasPresent ? 'audio_ptt'    : 'voicemail_ptt'
+      const eventLabel = role === 'operator'
+        ? (peerWasPresent ? '🎤 Operador — voz en vivo' : '📩 Operador — buzón de voz')
+        : (peerWasPresent ? '🎧 Cabina — voz en vivo'   : '📬 Cabina — mensaje de voz')
 
       const fileName = `${serviceId}/${Date.now()}_${role}.webm`
       const { error: upErr } = await supabase.storage
@@ -184,13 +217,13 @@ export function usePttSession({ serviceId, role }: UsePttSessionOptions): UsePtt
       const { data: { publicUrl } } = supabase.storage.from('audios').getPublicUrl(fileName)
 
       await supabase.from('service_logs').insert({
-        service_id: serviceId,
-        created_by: user.id,
-        type: 'audio_ptt',
-        note: finalTranscript.trim() || '[Audio PTT sin transcripción]',
+        service_id:  serviceId,
+        created_by:  user.id,
+        type:        logType,
+        note:        finalTranscript.trim() || '[Audio sin transcripción]',
         resource_url: publicUrl,
-        actor_role: role,
-        event_label: role === 'operator' ? '🎤 Operador — voz' : '🎧 Cabina — voz',
+        actor_role:  role,
+        event_label: eventLabel,
       })
     } catch (e: any) {
       console.error('[PTT] upload error:', e.message)
@@ -221,9 +254,9 @@ export function usePttSession({ serviceId, role }: UsePttSessionOptions): UsePtt
       setMode('connecting')
       isWebRtcConnected.current = false
 
-      // Try WebRTC — if peer is listening, they'll answer within WEBRTC_TIMEOUT_MS
+      // Try WebRTC only if peer is present
       const ch = channelRef.current
-      if (ch) {
+      if (ch && isPeerPresent) {
         const pc = buildPeerConnection(ch)
         pcRef.current = pc
         stream.getTracks().forEach(t => pc.addTrack(t, stream))
@@ -231,7 +264,7 @@ export function usePttSession({ serviceId, role }: UsePttSessionOptions): UsePtt
         await pc.setLocalDescription(offer)
         ch.send({ type: 'broadcast', event: 'ptt:offer', payload: { sdp: offer, role } })
 
-        // Fallback timer
+        // Fallback timer — if peer doesn't answer in time → record mode
         connectTimerRef.current = setTimeout(() => {
           if (!isWebRtcConnected.current) {
             console.log('[PTT] No peer answered — async mode')
@@ -240,6 +273,7 @@ export function usePttSession({ serviceId, role }: UsePttSessionOptions): UsePtt
           connectTimerRef.current = null
         }, WEBRTC_TIMEOUT_MS)
       } else {
+        // Peer not in expediente → go straight to recording (voicemail)
         setMode('recording')
       }
     } catch (e: any) {
@@ -247,7 +281,15 @@ export function usePttSession({ serviceId, role }: UsePttSessionOptions): UsePtt
       if (e.name === 'NotAllowedError') alert('Permiso de micrófono necesario.')
       setMode('idle')
     }
-  }, [serviceId, mode, role]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [serviceId, mode, role, isPeerPresent]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // snapshot peer presence at the moment the button was pressed
+  const peerPresentAtStart = useRef(false)
+
+  const startPttWrapped = useCallback(async () => {
+    peerPresentAtStart.current = isPeerPresent
+    await startPtt()
+  }, [startPtt, isPeerPresent])
 
   // ── stopPtt ─────────────────────────────────────────────────────────────
   const stopPtt = useCallback(async () => {
@@ -259,6 +301,7 @@ export function usePttSession({ serviceId, role }: UsePttSessionOptions): UsePtt
     // Close WebRTC
     pcRef.current?.close()
     pcRef.current = null
+    const wasLive = isWebRtcConnected.current
     isWebRtcConnected.current = false
 
     // Stop mic stream
@@ -273,7 +316,7 @@ export function usePttSession({ serviceId, role }: UsePttSessionOptions): UsePtt
       recorder.onstop = async () => {
         const blob = new Blob(chunksRef.current, { type: 'audio/webm' })
         if (blob.size > 500) {  // skip tiny blobs (accidental taps)
-          await uploadAndLog(blob, finalTranscript)
+          await uploadAndLog(blob, finalTranscript, wasLive || peerPresentAtStart.current)
         } else {
           setMode('idle')
         }
@@ -285,5 +328,5 @@ export function usePttSession({ serviceId, role }: UsePttSessionOptions): UsePtt
     recorderRef.current = null
   }, [role]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  return { mode, startPtt, stopPtt, transcript, incomingActive }
+  return { mode, startPtt: startPttWrapped, stopPtt, transcript, incomingActive, isPeerPresent }
 }

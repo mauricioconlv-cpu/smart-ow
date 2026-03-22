@@ -7,6 +7,7 @@ import WelcomeBanner from './components/WelcomeBanner'
 import SidebarLogo from './components/SidebarLogo'
 import NavItemClient from './components/NavItemClient'
 import DashboardHeartbeat from './components/DashboardHeartbeat'
+import OperatorFreeModal from './components/OperatorFreeModal'
 
 export default async function DashboardLayout({
   children,
@@ -113,6 +114,7 @@ export default async function DashboardLayout({
         </div>
       </main>
       <DashboardHeartbeat />
+      <OperatorFreeModal />
     </div>
   )
 }

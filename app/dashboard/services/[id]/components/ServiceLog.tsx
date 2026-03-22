@@ -4,7 +4,7 @@ import { useState, useEffect, useTransition } from 'react'
 import { createBrowserClient } from '@supabase/ssr'
 import { addManualNote } from '../capture/actions'
 import {
-  Lock, Truck, RefreshCw, FileText, Send, Loader2, AlertCircle, Mic
+  Lock, Truck, RefreshCw, FileText, Send, Loader2, AlertCircle, Mic, Mailbox, MessageSquare
 } from 'lucide-react'
 
 const supabase = createBrowserClient(
@@ -13,12 +13,14 @@ const supabase = createBrowserClient(
 )
 
 const TYPE_CONFIG: Record<string, { label: string; color: string; bg: string; emoji?: string }> = {
-  edit_unlock:   { label: 'Desbloqueo',       color: 'text-amber-600',  bg: 'bg-amber-50  border-amber-200'  },
-  assignment:    { label: 'Asignación',        color: 'text-blue-600',   bg: 'bg-blue-50   border-blue-200'   },
-  status_change: { label: 'Cambio de estado', color: 'text-violet-600', bg: 'bg-violet-50 border-violet-200' },
-  manual_note:   { label: 'Nota',             color: 'text-slate-600',  bg: 'bg-white     border-slate-200'  },
-  system_note:   { label: 'Sistema',          color: 'text-slate-500',  bg: 'bg-slate-50  border-slate-200'  },
-  audio_ptt:     { label: 'Audio PTT',        color: 'text-purple-600', bg: 'bg-purple-50 border-purple-200', emoji: '🎤' },
+  edit_unlock:    { label: 'Desbloqueo',         color: 'text-amber-600',   bg: 'bg-amber-50  border-amber-200'   },
+  assignment:     { label: 'Asignación',          color: 'text-blue-600',    bg: 'bg-blue-50   border-blue-200'   },
+  status_change:  { label: 'Cambio de estado',   color: 'text-violet-600',  bg: 'bg-violet-50 border-violet-200' },
+  manual_note:    { label: 'Nota',                color: 'text-slate-600',   bg: 'bg-white     border-slate-200'  },
+  system_note:    { label: 'Sistema',             color: 'text-slate-500',   bg: 'bg-slate-50  border-slate-200'  },
+  audio_ptt:      { label: 'Audio PTT',           color: 'text-purple-600',  bg: 'bg-purple-50 border-purple-200', emoji: '🎤' },
+  voicemail_ptt:  { label: 'Buzón de voz',        color: 'text-indigo-600',  bg: 'bg-indigo-50 border-indigo-200', emoji: '📩' },
+  operator_reply: { label: 'Respuesta Operador',  color: 'text-emerald-600', bg: 'bg-emerald-50 border-emerald-200', emoji: '💬' },
 }
 
 interface LogEntry {
@@ -43,6 +45,10 @@ export default function ServiceLog({ serviceId, canAddNotes }: ServiceLogProps) 
   const [noteText, setNoteText] = useState('')
   const [noteErr, setNoteErr]   = useState('')
   const [isPending, start]      = useTransition()
+  // Per-voicemail reply state: { [logId]: string }
+  const [replyText, setReplyText] = useState<Record<string, string>>({})
+  const [replyOpen, setReplyOpen] = useState<Record<string, boolean>>({})
+  const [replySaving, setReplySaving] = useState<Record<string, boolean>>({})
 
   const fetchLogs = async () => {
     const { data } = await supabase
@@ -80,6 +86,31 @@ export default function ServiceLog({ serviceId, canAddNotes }: ServiceLogProps) 
     })
   }
 
+  async function handleOperatorReply(voicemailLogId: string) {
+    const text = (replyText[voicemailLogId] ?? '').trim()
+    if (!text) return
+    setReplySaving(prev => ({ ...prev, [voicemailLogId]: true }))
+    try {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) throw new Error('no auth')
+      await supabase.from('service_logs').insert({
+        service_id:  serviceId,
+        created_by:  user.id,
+        type:        'operator_reply',
+        note:        text,
+        actor_role:  'dispatcher',
+        event_label: '💬 Cabina respondió al operador',
+      })
+      setReplyText(prev  => ({ ...prev, [voicemailLogId]: '' }))
+      setReplyOpen(prev  => ({ ...prev, [voicemailLogId]: false }))
+      fetchLogs()
+    } catch (e: any) {
+      console.error('[ServiceLog] reply error:', e.message)
+    } finally {
+      setReplySaving(prev => ({ ...prev, [voicemailLogId]: false }))
+    }
+  }
+
   const formatTime = (iso: string) =>
     new Date(iso).toLocaleString('es-MX', {
       day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit'
@@ -106,7 +137,11 @@ export default function ServiceLog({ serviceId, canAddNotes }: ServiceLogProps) 
         )}
         {logs.map(log => {
           const cfg = TYPE_CONFIG[log.type] ?? TYPE_CONFIG.manual_note
-          const isAudio = log.type === 'audio_ptt'
+          const isAudio     = log.type === 'audio_ptt'
+          const isVoicemail = log.type === 'voicemail_ptt'
+          const isReply     = log.type === 'operator_reply'
+          const hasAudio    = (isAudio || isVoicemail) && log.resource_url
+
           return (
             <div key={log.id} className={`flex gap-3 p-3 rounded-lg border ${cfg.bg}`}>
               {/* Icon / Emoji */}
@@ -115,36 +150,72 @@ export default function ServiceLog({ serviceId, canAddNotes }: ServiceLogProps) 
                   log.type === 'edit_unlock'   ? <Lock className="w-4 h-4" /> :
                   log.type === 'assignment'    ? <Truck className="w-4 h-4" /> :
                   log.type === 'status_change' ? <RefreshCw className="w-4 h-4" /> :
+                  log.type === 'operator_reply' ? <MessageSquare className="w-4 h-4" /> :
                   <FileText className="w-4 h-4" />
                 )}
               </div>
 
               <div className="flex-1 min-w-0">
                 {/* Event label */}
-                {(log.event_label || isAudio) && (
+                {(log.event_label || isAudio || isVoicemail || isReply) && (
                   <p className={`text-xs font-bold mb-0.5 ${cfg.color}`}>
                     {log.event_label ?? cfg.label}
                   </p>
                 )}
 
-                {/* Transcription text */}
+                {/* Transcription / note text */}
                 {log.note && (
                   <p className="text-sm text-slate-700 leading-snug">{log.note}</p>
                 )}
 
-                {/* Audio player — only for audio_ptt with resource_url */}
-                {isAudio && log.resource_url && (
+                {/* Audio player */}
+                {hasAudio && (
                   <div className="mt-2">
-                    <audio
-                      controls
-                      preload="none"
-                      className="w-full h-9"
-                      style={{ borderRadius: 8 }}
-                    >
-                      <source src={log.resource_url} type="audio/webm" />
-                      <source src={log.resource_url} type="audio/ogg" />
+                    <audio controls preload="none" className="w-full h-9" style={{ borderRadius: 8 }}>
+                      <source src={log.resource_url!} type="audio/webm" />
+                      <source src={log.resource_url!} type="audio/ogg" />
                       Tu navegador no soporta audio.
                     </audio>
+                  </div>
+                )}
+
+                {/* Reply button for voicemail from operator */}
+                {isVoicemail && log.actor_role === 'operator' && canAddNotes && (
+                  <div className="mt-2">
+                    {!replyOpen[log.id] ? (
+                      <button
+                        onClick={() => setReplyOpen(prev => ({ ...prev, [log.id]: true }))}
+                        className="flex items-center gap-1.5 text-xs font-semibold text-indigo-600 hover:text-indigo-800 transition"
+                      >
+                        <MessageSquare className="w-3.5 h-3.5" />
+                        Responder en texto
+                      </button>
+                    ) : (
+                      <div className="flex gap-2 mt-1">
+                        <input
+                          type="text"
+                          value={replyText[log.id] ?? ''}
+                          onChange={e => setReplyText(prev => ({ ...prev, [log.id]: e.target.value }))}
+                          onKeyDown={e => { if (e.key === 'Enter') handleOperatorReply(log.id) }}
+                          placeholder="Escribe tu respuesta..."
+                          className="flex-1 text-sm border border-indigo-300 rounded-lg px-3 py-1.5 text-slate-800 placeholder:text-slate-400 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none"
+                          autoFocus
+                        />
+                        <button
+                          onClick={() => handleOperatorReply(log.id)}
+                          disabled={replySaving[log.id] || !(replyText[log.id] ?? '').trim()}
+                          className="flex-shrink-0 flex items-center gap-1 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold rounded-lg transition disabled:opacity-40"
+                        >
+                          {replySaving[log.id] ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                        </button>
+                        <button
+                          onClick={() => setReplyOpen(prev => ({ ...prev, [log.id]: false }))}
+                          className="text-xs text-slate-400 hover:text-slate-600"
+                        >
+                          Cancelar
+                        </button>
+                      </div>
+                    )}
                   </div>
                 )}
 

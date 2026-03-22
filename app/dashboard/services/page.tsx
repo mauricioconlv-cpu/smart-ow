@@ -1,9 +1,9 @@
 'use client'
 
-import { useEffect, useState, useMemo } from 'react'
+import { useEffect, useState, useMemo, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import Link from 'next/link'
-import { Clock, AlertTriangle, Truck, Search, X, Plus } from 'lucide-react'
+import { Clock, AlertTriangle, Truck, Search, X, Plus, Mailbox } from 'lucide-react'
 
 type TabType = 'abierto' | 'cotizacion' | 'cancelado_momento' | 'cancelado_posterior'
 
@@ -12,6 +12,8 @@ export default function ServicesPage() {
   const [services, setServices] = useState<any[]>([])
   const [currentTime, setCurrentTime] = useState(Date.now())
   const [searchQuery, setSearchQuery] = useState('')
+  // serviceId → true  means it has unread voicemail from the operator
+  const [voicemailAlert, setVoicemailAlert] = useState<Record<string, boolean>>({})
 
   const supabase = createClient()
 
@@ -20,25 +22,77 @@ export default function ServicesPage() {
     return () => clearInterval(timer)
   }, [])
 
+  const fetchServices = useCallback(async () => {
+    const { data } = await supabase
+      .from('services')
+      .select('*, client:clients(name), operator:profiles(full_name, grua_asignada)')
+      .order('created_at', { ascending: false })
+    if (data) setServices(data)
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Load services + real-time service updates ──────────────────────────
   useEffect(() => {
-    const fetchServices = async () => {
-      const { data } = await supabase
-        .from('services')
-        .select('*, client:clients(name), operator:profiles(full_name, grua_asignada)')
-        .order('created_at', { ascending: false })
-      if (data) setServices(data)
-    }
-
     fetchServices()
-
     const channel = supabase.channel('services_list_updates')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'services' }, () => {
-        fetchServices()
-      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'services' }, fetchServices)
       .subscribe()
-
     return () => { supabase.removeChannel(channel) }
-  }, [])
+  }, [fetchServices])
+
+  // ── Listen for operator voicemail PTT → blink folio ───────────────────
+  useEffect(() => {
+    const logChannel = supabase
+      .channel('voicemail_alerts')
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'service_logs' },
+        (payload: any) => {
+          const row = payload.new
+          // Only operator voice messages (voicemail_ptt) trigger the alert
+          if (row.type === 'voicemail_ptt' && row.actor_role === 'operator') {
+            const svcId = row.service_id
+
+            // Find folio for the push notification
+            setServices(prev => {
+              const svc = prev.find(s => s.id === svcId)
+              if (svc) {
+                triggerVoicemailNotification(svc.folio, row.note)
+              }
+              return prev
+            })
+
+            // Start blink
+            setVoicemailAlert(prev => ({ ...prev, [svcId]: true }))
+          }
+        }
+      )
+      .subscribe()
+    return () => { supabase.removeChannel(logChannel) }
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  function triggerVoicemailNotification(folio: number, note: string) {
+    if (typeof window === 'undefined' || !('Notification' in window)) return
+    const body = note && note !== '[Audio sin transcripción]'
+      ? `"${note.slice(0, 80)}"`
+      : 'El operador dejó un audio. Ábrelo en el expediente.'
+    if (Notification.permission === 'granted') {
+      new Notification(`📩 Audio del Operador — Folio #${folio}`, { body })
+    } else if (Notification.permission !== 'denied') {
+      Notification.requestPermission().then(p => {
+        if (p === 'granted') new Notification(`📩 Audio del Operador — Folio #${folio}`, { body })
+      })
+    }
+  }
+
+  // Dismiss voicemail blink when user clicks the card
+  function dismissAlert(serviceId: string) {
+    setVoicemailAlert(prev => {
+      if (!prev[serviceId]) return prev
+      const next = { ...prev }
+      delete next[serviceId]
+      return next
+    })
+  }
 
   // Contadores por pestaña
   const tabCounts = useMemo(() => ({
@@ -142,127 +196,156 @@ export default function ServicesPage() {
   }
 
   return (
-    <div className="flex flex-col h-[calc(100vh-6rem)] bg-white border border-slate-200 shadow-sm rounded-xl overflow-hidden">
+    <>
+      {/* Blink keyframe */}
+      <style>{`
+        @keyframes folioVoicemail {
+          0%,100% { background:#dcfce7; color:#15803d; transform:scale(1); }
+          50%      { background:#16a34a; color:white;   transform:scale(1.08); }
+        }
+        .folio-voicemail-blink { animation: folioVoicemail 0.85s ease-in-out infinite; }
+      `}</style>
 
-      {/* Header */}
-      <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 bg-slate-50 shrink-0">
-        <div>
-          <h2 className="text-xl font-bold text-slate-800">Servicios de Arrastre</h2>
-          <p className="text-sm text-slate-500">Monitorea los folios activos y su estado SLA.</p>
+      <div className="flex flex-col h-[calc(100vh-6rem)] bg-white border border-slate-200 shadow-sm rounded-xl overflow-hidden">
+
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 bg-slate-50 shrink-0">
+          <div>
+            <h2 className="text-xl font-bold text-slate-800">Servicios de Arrastre</h2>
+            <p className="text-sm text-slate-500">Monitorea los folios activos y su estado SLA.</p>
+          </div>
+          <Link
+            href="/dashboard/services/new"
+            className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium text-sm transition-colors"
+          >
+            <Plus className="h-4 w-4" />
+            Nuevo Servicio
+          </Link>
         </div>
-        <Link
-          href="/dashboard/services/new"
-          className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium text-sm transition-colors"
-        >
-          <Plus className="h-4 w-4" />
-          Nuevo Servicio
-        </Link>
-      </div>
 
-      {/* Barra de Tabs + Buscador */}
-      <div className="flex items-center border-b border-slate-200 bg-slate-50 overflow-x-auto shrink-0">
-        <TabButton active={activeTab==='abierto'} count={tabCounts.abierto} onClick={()=>{setActiveTab('abierto'); setSearchQuery('')}}>Servicios Abiertos</TabButton>
-        <TabButton active={activeTab==='cotizacion'} count={tabCounts.cotizacion} onClick={()=>{setActiveTab('cotizacion'); setSearchQuery('')}}>Exp. en Cotización</TabButton>
-        <TabButton active={activeTab==='cancelado_momento'} count={tabCounts.cancelado_momento} onClick={()=>{setActiveTab('cancelado_momento'); setSearchQuery('')}}>Cancelados Inmediatos</TabButton>
-        <TabButton active={activeTab==='cancelado_posterior'} count={tabCounts.cancelado_posterior} onClick={()=>{setActiveTab('cancelado_posterior'); setSearchQuery('')}}>Cancelados Posterior</TabButton>
+        {/* Barra de Tabs + Buscador */}
+        <div className="flex items-center border-b border-slate-200 bg-slate-50 overflow-x-auto shrink-0">
+          <TabButton active={activeTab==='abierto'} count={tabCounts.abierto} onClick={()=>{setActiveTab('abierto'); setSearchQuery('')}}>Servicios Abiertos</TabButton>
+          <TabButton active={activeTab==='cotizacion'} count={tabCounts.cotizacion} onClick={()=>{setActiveTab('cotizacion'); setSearchQuery('')}}>Exp. en Cotización</TabButton>
+          <TabButton active={activeTab==='cancelado_momento'} count={tabCounts.cancelado_momento} onClick={()=>{setActiveTab('cancelado_momento'); setSearchQuery('')}}>Cancelados Inmediatos</TabButton>
+          <TabButton active={activeTab==='cancelado_posterior'} count={tabCounts.cancelado_posterior} onClick={()=>{setActiveTab('cancelado_posterior'); setSearchQuery('')}}>Cancelados Posterior</TabButton>
 
-        <div className="ml-auto flex-shrink-0 px-3 py-2">
-          <div className="relative flex items-center">
-            <Search className="absolute left-3 w-4 h-4 text-slate-400 pointer-events-none" />
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={e => setSearchQuery(e.target.value)}
-              placeholder="Buscar folio o expediente..."
-              className="pl-9 pr-8 py-1.5 text-sm border border-slate-300 rounded-lg bg-white text-slate-800 placeholder:text-slate-400 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 w-56 transition-all"
-            />
-            {searchQuery && (
-              <button onClick={() => setSearchQuery('')} className="absolute right-2 text-slate-400 hover:text-slate-600">
-                <X className="w-4 h-4" />
-              </button>
-            )}
+          <div className="ml-auto flex-shrink-0 px-3 py-2">
+            <div className="relative flex items-center">
+              <Search className="absolute left-3 w-4 h-4 text-slate-400 pointer-events-none" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={e => setSearchQuery(e.target.value)}
+                placeholder="Buscar folio o expediente..."
+                className="pl-9 pr-8 py-1.5 text-sm border border-slate-300 rounded-lg bg-white text-slate-800 placeholder:text-slate-400 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 w-56 transition-all"
+              />
+              {searchQuery && (
+                <button onClick={() => setSearchQuery('')} className="absolute right-2 text-slate-400 hover:text-slate-600">
+                  <X className="w-4 h-4" />
+                </button>
+              )}
+            </div>
           </div>
         </div>
-      </div>
 
-      {/* Aviso de búsqueda */}
-      {searchQuery && (
-        <div className="px-4 py-2 bg-blue-50 border-b border-blue-100 text-xs text-blue-700 font-medium flex items-center gap-2 shrink-0">
-          <Search className="w-3 h-3" />
-          {filteredServices.length === 0
-            ? `Sin resultados para "${searchQuery}"`
-            : `${filteredServices.length} resultado(s) para "${searchQuery}"`}
-        </div>
-      )}
-
-      {/* Lista SLA */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-slate-50">
-        {filteredServices.length === 0 ? (
-          <div className="h-full flex items-center justify-center text-slate-400 text-sm">
-            {searchQuery ? `Sin resultados para "${searchQuery}"` : 'No hay servicios en este estatus.'}
+        {/* Aviso de búsqueda */}
+        {searchQuery && (
+          <div className="px-4 py-2 bg-blue-50 border-b border-blue-100 text-xs text-blue-700 font-medium flex items-center gap-2 shrink-0">
+            <Search className="w-3 h-3" />
+            {filteredServices.length === 0
+              ? `Sin resultados para "${searchQuery}"`
+              : `${filteredServices.length} resultado(s) para "${searchQuery}"`}
           </div>
-        ) : (
-          filteredServices.map(service => {
-            const sla = calculateSLA(service)
-            return (
-              <Link
-                key={service.id}
-                href={`/dashboard/services/${service.id}/capture`}
-                className="block bg-white border border-slate-200 rounded-lg p-4 shadow-sm relative overflow-hidden hover:border-blue-400 hover:shadow-md transition-all"
-              >
-                <div className="flex flex-col md:flex-row gap-4 justify-between">
-                  {/* Folio + Cliente */}
-                  <div className="flex space-x-4">
-                    <div className="w-12 h-12 bg-slate-100 rounded-lg flex items-center justify-center font-black text-slate-700 text-sm hover:bg-blue-100 hover:text-blue-700 transition-colors">
-                      #{service.folio}
-                    </div>
-                    <div>
-                      <p className="font-bold text-slate-800">{service.client?.name || 'Cliente Particular'}</p>
-                      {service.numero_expediente && (
-                        <p className="text-xs text-blue-600 font-medium mt-0.5">Exp: {service.numero_expediente}</p>
-                      )}
-                      <div className="flex gap-2 text-xs text-slate-500 mt-1">
-                        <span className="flex items-center gap-1"><Truck className="w-3 h-3"/> {service.operator?.full_name || 'SIN ASIGNAR'}</span>
-                        <span>•</span>
-                        <span className="uppercase font-semibold text-slate-400">{service.status.replace(/_/g, ' ')}</span>
+        )}
+
+        {/* Lista SLA */}
+        <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-slate-50">
+          {filteredServices.length === 0 ? (
+            <div className="h-full flex items-center justify-center text-slate-400 text-sm">
+              {searchQuery ? `Sin resultados para "${searchQuery}"` : 'No hay servicios en este estatus.'}
+            </div>
+          ) : (
+            filteredServices.map(service => {
+              const sla         = calculateSLA(service)
+              const hasVoicemail = voicemailAlert[service.id]
+
+              return (
+                <Link
+                  key={service.id}
+                  href={`/dashboard/services/${service.id}/tracking`}
+                  onClick={() => dismissAlert(service.id)}
+                  className={`block bg-white border rounded-lg p-4 shadow-sm relative overflow-hidden transition-all
+                    ${hasVoicemail
+                      ? 'border-green-400 shadow-green-100 shadow-md'
+                      : 'border-slate-200 hover:border-blue-400 hover:shadow-md'
+                    }`}
+                >
+                  <div className="flex flex-col md:flex-row gap-4 justify-between">
+                    {/* Folio + Cliente */}
+                    <div className="flex space-x-4">
+                      <div className={`w-12 h-12 rounded-lg flex items-center justify-center font-black text-sm transition-colors
+                        ${hasVoicemail
+                          ? 'folio-voicemail-blink'
+                          : 'bg-slate-100 text-slate-700 hover:bg-blue-100 hover:text-blue-700'
+                        }`}>
+                        #{service.folio}
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <p className="font-bold text-slate-800">{service.client?.name || 'Cliente Particular'}</p>
+                          {hasVoicemail && (
+                            <span className="flex items-center gap-1 text-[10px] font-black px-2 py-0.5 rounded-full bg-green-100 text-green-700 animate-pulse">
+                              <Mailbox className="w-3 h-3" /> NUEVO AUDIO
+                            </span>
+                          )}
+                        </div>
+                        {service.numero_expediente && (
+                          <p className="text-xs text-blue-600 font-medium mt-0.5">Exp: {service.numero_expediente}</p>
+                        )}
+                        <div className="flex gap-2 text-xs text-slate-500 mt-1">
+                          <span className="flex items-center gap-1"><Truck className="w-3 h-3"/> {service.operator?.full_name || 'SIN ASIGNAR'}</span>
+                          <span>•</span>
+                          <span className="uppercase font-semibold text-slate-400">{service.status.replace(/_/g, ' ')}</span>
+                        </div>
                       </div>
                     </div>
-                  </div>
 
-                  {/* Barra SLA */}
-                  <div className="flex-1 flex flex-col justify-center max-w-lg w-full shrink-0">
-                    <div className="flex justify-between text-xs font-bold mb-1 items-center">
-                      <span className={`px-2 py-0.5 rounded flex items-center gap-1 ${sla.color} ${sla.text}`}>
-                        {sla.warning && <AlertTriangle className="w-3 h-3"/>}
-                        {sla.message}
-                      </span>
-                      <span className="text-slate-500">{sla.progress}%</span>
+                    {/* Barra SLA */}
+                    <div className="flex-1 flex flex-col justify-center max-w-lg w-full shrink-0">
+                      <div className="flex justify-between text-xs font-bold mb-1 items-center">
+                        <span className={`px-2 py-0.5 rounded flex items-center gap-1 ${sla.color} ${sla.text}`}>
+                          {sla.warning && <AlertTriangle className="w-3 h-3"/>}
+                          {sla.message}
+                        </span>
+                        <span className="text-slate-500">{sla.progress}%</span>
+                      </div>
+                      <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden flex">
+                        <div className={`h-full ${sla.barColor} transition-all duration-1000 ease-in-out`} style={{width: `${sla.progress}%`}}></div>
+                      </div>
                     </div>
-                    <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden flex">
-                      <div className={`h-full ${sla.barColor} transition-all duration-1000 ease-in-out`} style={{width: `${sla.progress}%`}}></div>
-                    </div>
-                  </div>
 
-                  {/* Acciones */}
-                  <div className="flex items-center">
-                    {service.status === 'sin_operador' && (
-                      <span className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 text-sm font-bold rounded-lg shadow-sm">
-                        Asignar Operador
-                      </span>
-                    )}
-                    {service.status === 'en_captura' && (
-                      <span className="bg-slate-900 hover:bg-black text-white px-4 py-2 text-sm font-bold rounded-lg shadow-sm">
-                        Terminar Captura
-                      </span>
-                    )}
+                    {/* Acciones */}
+                    <div className="flex items-center">
+                      {service.status === 'sin_operador' && (
+                        <span className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 text-sm font-bold rounded-lg shadow-sm">
+                          Asignar Operador
+                        </span>
+                      )}
+                      {service.status === 'en_captura' && (
+                        <span className="bg-slate-900 hover:bg-black text-white px-4 py-2 text-sm font-bold rounded-lg shadow-sm">
+                          Terminar Captura
+                        </span>
+                      )}
+                    </div>
                   </div>
-                </div>
-              </Link>
-            )
-          })
-        )}
+                </Link>
+              )
+            })
+          )}
+        </div>
       </div>
-    </div>
+    </>
   )
 }
 
