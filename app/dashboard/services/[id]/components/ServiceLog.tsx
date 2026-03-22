@@ -13,14 +13,14 @@ const supabase = createBrowserClient(
 )
 
 const TYPE_CONFIG: Record<string, { label: string; color: string; bg: string; emoji?: string }> = {
-  edit_unlock:    { label: 'Desbloqueo',         color: 'text-amber-600',   bg: 'bg-amber-50  border-amber-200'   },
-  assignment:     { label: 'Asignación',          color: 'text-blue-600',    bg: 'bg-blue-50   border-blue-200'   },
-  status_change:  { label: 'Cambio de estado',   color: 'text-violet-600',  bg: 'bg-violet-50 border-violet-200' },
-  manual_note:    { label: 'Nota',                color: 'text-slate-600',   bg: 'bg-white     border-slate-200'  },
-  system_note:    { label: 'Sistema',             color: 'text-slate-500',   bg: 'bg-slate-50  border-slate-200'  },
-  audio_ptt:      { label: 'Audio PTT',           color: 'text-purple-600',  bg: 'bg-purple-50 border-purple-200', emoji: '🎤' },
-  voicemail_ptt:  { label: 'Buzón de voz',        color: 'text-indigo-600',  bg: 'bg-indigo-50 border-indigo-200', emoji: '📩' },
-  operator_reply: { label: 'Respuesta Operador',  color: 'text-emerald-600', bg: 'bg-emerald-50 border-emerald-200', emoji: '💬' },
+  edit_unlock:      { label: 'Desbloqueo',          color: 'text-amber-600',   bg: 'bg-amber-50  border-amber-200'   },
+  assignment:       { label: 'Asignación',           color: 'text-blue-600',    bg: 'bg-blue-50   border-blue-200'   },
+  status_change:    { label: 'Cambio de estado',    color: 'text-violet-600',  bg: 'bg-violet-50 border-violet-200' },
+  manual_note:      { label: 'Nota',                 color: 'text-slate-600',   bg: 'bg-white     border-slate-200'  },
+  system_note:      { label: 'Sistema',              color: 'text-slate-500',   bg: 'bg-slate-50  border-slate-200'  },
+  voice_note:       { label: 'Audio Operador',       color: 'text-purple-600',  bg: 'bg-purple-50 border-purple-200', emoji: '🎙️' },
+  operator_note:    { label: 'Mensaje Operador',     color: 'text-emerald-600', bg: 'bg-emerald-50 border-emerald-200', emoji: '💬' },
+  dispatcher_note:  { label: 'Mensaje Cabina',       color: 'text-blue-600',    bg: 'bg-blue-50   border-blue-200',  emoji: '📱' },
 }
 
 interface LogEntry {

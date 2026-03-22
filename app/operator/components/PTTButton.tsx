@@ -1,81 +1,91 @@
 'use client'
 
-import { Mic, Loader2, Radio, Mic2 } from 'lucide-react'
-import { usePttSession } from '@/lib/ptt/usePttSession'
+import { Mic, Loader2, MicOff } from 'lucide-react'
+import { useVoiceMessage } from '@/lib/hooks/useVoiceMessage'
 
 export default function PTTButton({ activeServiceId }: { activeServiceId?: string }) {
-  const { mode, startPtt, stopPtt, incomingActive } = usePttSession({
+  const { mode, startRecording, stopRecording } = useVoiceMessage({
     serviceId: activeServiceId,
     role: 'operator',
   })
 
-  const isDisabled = !activeServiceId || mode === 'uploading'
+  const isDisabled  = !activeServiceId || mode === 'uploading'
+  const isRecording = mode === 'recording'
 
-  // Color & label by mode
-  const style = (() => {
-    if (!activeServiceId) return { bg: 'bg-slate-300', label: 'Sin servicio activo' }
-    switch (mode) {
-      case 'connecting': return { bg: 'bg-yellow-500 animate-pulse', label: 'Toca para detener...' }
-      case 'streaming':  return { bg: 'bg-green-500',               label: 'Toca para detener' }
-      case 'recording':  return { bg: 'bg-red-500 animate-pulse',    label: 'Toca para enviar' }
-      case 'uploading':  return { bg: 'bg-amber-400',                label: 'Enviando...' }
-      default:           return { bg: 'bg-blue-600 hover:bg-blue-500', label: 'Toca para hablar' }
-    }
-  })()
-
-  const isActive = mode === 'streaming' || mode === 'recording' || mode === 'connecting'
-
-  const togglePtt = (e: React.MouseEvent | React.TouchEvent) => {
+  const toggle = async (e: React.MouseEvent | React.TouchEvent) => {
     e.preventDefault()
     if (isDisabled) return
-    if (isActive) stopPtt()
-    else startPtt()
+    if (isRecording) await stopRecording()
+    else await startRecording()
   }
 
-  return (
-    <div className="flex flex-col items-center">
-      {/* Incoming audio indicator */}
-      {incomingActive && (
-        <span className="mb-1 text-[9px] font-black text-green-300 uppercase tracking-widest animate-pulse">
-          ◉ Cabina
-        </span>
-      )}
+  const label = !activeServiceId
+    ? 'Sin servicio activo'
+    : mode === 'recording'  ? 'Toca para enviar'
+    : mode === 'uploading'  ? 'Enviando audio…'
+    : 'Toca para dejar un mensaje'
 
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
       <button
-        onClick={togglePtt}
+        onClick={toggle}
         disabled={isDisabled}
-        title={style.label}
-        className={`relative p-3 rounded-full flex items-center justify-center transition-all touch-none select-none
-          ${style.bg}
-          ${isActive ? 'shadow-[0_0_18px_rgba(239,68,68,0.7)] scale-110' : ''}
-          ${isDisabled ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'}
-        `}
+        title={label}
+        style={{
+          position: 'relative', width: 52, height: 52, borderRadius: '50%',
+          border: 'none', cursor: isDisabled ? 'not-allowed' : 'pointer',
+          background: isRecording
+            ? 'linear-gradient(135deg,#ef4444,#dc2626)'
+            : mode === 'uploading'
+              ? 'linear-gradient(135deg,#f59e0b,#d97706)'
+              : 'linear-gradient(135deg,#3b82f6,#2563eb)',
+          boxShadow: isRecording ? '0 0 18px rgba(239,68,68,0.7)' : '0 2px 8px rgba(0,0,0,0.3)',
+          transform: isRecording ? 'scale(1.15)' : 'scale(1)',
+          transition: 'all 0.15s',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          opacity: isDisabled ? 0.4 : 1,
+          touchAction: 'none',
+        }}
       >
         {mode === 'uploading' ? (
-          <Loader2 className="h-5 w-5 text-white animate-spin" />
-        ) : mode === 'streaming' ? (
-          <Radio className="h-5 w-5 text-white" />
-        ) : mode === 'recording' || mode === 'connecting' ? (
-          <Mic2 className="h-5 w-5 text-white fill-current" />
+          <Loader2 style={{ width: 22, height: 22, color: 'white', animation: 'spin 0.8s linear infinite' }} />
+        ) : isRecording ? (
+          <MicOff style={{ width: 22, height: 22, color: 'white' }} />
         ) : (
-          <Mic className="h-5 w-5 text-white" />
+          <Mic style={{ width: 22, height: 22, color: 'white' }} />
         )}
 
-        {/* Ripple rings while active */}
-        {isActive && (
+        {/* Pulse rings while recording */}
+        {isRecording && (
           <>
-            <span className="absolute inset-0 rounded-full border-2 border-red-400 animate-ping opacity-60" />
-            <span className="absolute inset-0 rounded-full border border-red-300 animate-ping opacity-30" style={{ animationDelay: '0.3s' }} />
+            <span style={{
+              position: 'absolute', inset: 0, borderRadius: '50%',
+              border: '2px solid rgba(239,68,68,0.6)',
+              animation: 'ping 1s cubic-bezier(0,0,0.2,1) infinite',
+            }} />
+            <span style={{
+              position: 'absolute', inset: 0, borderRadius: '50%',
+              border: '2px solid rgba(239,68,68,0.3)',
+              animation: 'ping 1s cubic-bezier(0,0,0.2,1) infinite',
+              animationDelay: '0.4s',
+            }} />
           </>
         )}
+        <style>{`
+          @keyframes spin { to { transform: rotate(360deg); } }
+          @keyframes ping {
+            75%, 100% { transform: scale(1.8); opacity: 0; }
+          }
+        `}</style>
       </button>
 
-      {/* Mode badge */}
-      {isActive && (
-        <span className="mt-1 text-[9px] font-black text-red-300 uppercase tracking-widest">
-          {mode === 'connecting' ? '…' : mode === 'streaming' ? 'EN VIVO' : 'REC'}
-        </span>
-      )}
+      <span style={{
+        fontSize: 9, fontWeight: 800, color: isRecording ? '#ef4444' : 'rgba(148,163,184,0.7)',
+        textTransform: 'uppercase', letterSpacing: '0.08em',
+        animation: isRecording ? 'pulse 1s ease-in-out infinite' : 'none',
+      }}>
+        {isRecording ? '● REC' : mode === 'uploading' ? 'ENVIANDO' : 'VOZ'}
+      </span>
     </div>
   )
 }

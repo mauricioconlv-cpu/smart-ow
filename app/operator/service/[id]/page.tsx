@@ -5,10 +5,11 @@ import { useState, useEffect, use } from 'react'
 import Link from 'next/link'
 import {
   ArrowLeft, CheckCircle2, ChevronRight, MapPin, Navigation,
-  Loader2, Phone, Mailbox, Send, MessageSquare, X
+  Loader2, MessageSquare, Send, X
 } from 'lucide-react'
 import { advanceServiceStatus } from './actions'
 import { useOperatorStore } from '../../store'
+import OperatorBitacoraNotifier from '../../components/OperatorBitacoraNotifier'
 
 const STEPS = [
   { id: 'rumbo_contacto',     emoji: '🚛', label: 'En Camino al Origen',     sub: 'Confirma cuando salgas hacia el lugar del siniestro' },
@@ -48,12 +49,14 @@ export default function ServiceControlPage({ params }: { params: Promise<{ id: s
   const [updating,    setUpdating]    = useState(false)
   const [updateError, setUpdateError] = useState('')
 
-  // Cabin messages (voicemail_ptt from dispatcher + operator_reply from dispatcher)
+  // Messages from dispatcher (dispatcher_note)
   const [cabinMsgs,   setCabinMsgs]   = useState<CabinMessage[]>([])
-  const [replyOpen,   setReplyOpen]   = useState<Record<string, boolean>>({})
-  const [replyText,   setReplyText]   = useState<Record<string, string>>({})
-  const [replySaving, setReplySaving] = useState<Record<string, boolean>>({})
   const [newMsgCount, setNewMsgCount] = useState(0)
+
+  // Operator sends text note
+  const [operatorNote, setOperatorNote] = useState('')
+  const [noteSending,  setNoteSending]  = useState(false)
+  const [noteSent,     setNoteSent]     = useState(false)
 
   const { setActiveService } = useOperatorStore()
 
@@ -72,19 +75,15 @@ export default function ServiceControlPage({ params }: { params: Promise<{ id: s
     setLoading(false)
   }
 
-  // Load cabin messages: voicemail_ptt from dispatcher AND dispatcher replies
+  // Load messages from dispatcher (dispatcher_note)
   const loadCabinMsgs = async () => {
     const { data } = await supabase
       .from('service_logs')
       .select('id, type, note, event_label, actor_role, resource_url, created_at')
       .eq('service_id', serviceId)
-      .in('type', ['voicemail_ptt', 'operator_reply'])
-      .eq('actor_role', 'dispatcher')          // ← only dispatcher side
+      .eq('type', 'dispatcher_note')
       .order('created_at', { ascending: true })
-    if (data) {
-      const msgs = data as CabinMessage[]
-      setCabinMsgs(msgs)
-    }
+    if (data) setCabinMsgs(data as CabinMessage[])
   }
 
   useEffect(() => {
@@ -93,7 +92,7 @@ export default function ServiceControlPage({ params }: { params: Promise<{ id: s
 
     const interval = setInterval(load, 6000)
 
-    // Real-time: listen for new voicemail_ptt from dispatcher
+    // Real-time: listen for new dispatcher_note
     const logChannel = supabase
       .channel(`operator_cabin_msgs_${serviceId}`)
       .on('postgres_changes', {
@@ -101,11 +100,9 @@ export default function ServiceControlPage({ params }: { params: Promise<{ id: s
         filter: `service_id=eq.${serviceId}`,
       }, (payload: any) => {
         const row = payload.new
-        if (row.actor_role === 'dispatcher') {
+        if (row.actor_role === 'dispatcher' && row.type === 'dispatcher_note') {
           loadCabinMsgs()
-          if (row.type === 'voicemail_ptt') {
-            setNewMsgCount(c => c + 1)
-          }
+          setNewMsgCount(c => c + 1)
         }
       })
       .subscribe()
@@ -125,27 +122,28 @@ export default function ServiceControlPage({ params }: { params: Promise<{ id: s
     setUpdating(false)
   }
 
-  async function handleReply(msgId: string) {
-    const text = (replyText[msgId] ?? '').trim()
-    if (!text) return
-    setReplySaving(prev => ({ ...prev, [msgId]: true }))
+  async function sendOperatorNote() {
+    const msg = operatorNote.trim()
+    if (!msg || noteSending) return
+    setNoteSending(true)
     try {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) throw new Error('no auth')
       await supabase.from('service_logs').insert({
         service_id:  serviceId,
         created_by:  user.id,
-        type:        'operator_reply',
-        note:        text,
+        type:        'operator_note',
+        note:        msg,
         actor_role:  'operator',
-        event_label: '💬 Operador respondió a la cabina',
+        event_label: '💬 Operador — nota de texto',
       })
-      setReplyText(prev  => ({ ...prev, [msgId]: '' }))
-      setReplyOpen(prev  => ({ ...prev, [msgId]: false }))
+      setOperatorNote('')
+      setNoteSent(true)
+      setTimeout(() => setNoteSent(false), 2500)
     } catch (e: any) {
-      console.error('[Operator reply] error:', e.message)
+      console.error('[OperatorNote]', e.message)
     } finally {
-      setReplySaving(prev => ({ ...prev, [msgId]: false }))
+      setNoteSending(false)
     }
   }
 
@@ -173,6 +171,8 @@ export default function ServiceControlPage({ params }: { params: Promise<{ id: s
 
   return (
     <div style={{ minHeight: '100vh', background: '#f1f5f9', paddingBottom: 120 }}>
+      {/* Notificador de mensajes de la cabina */}
+      <OperatorBitacoraNotifier serviceId={serviceId} />
 
       {/* Header */}
       <div style={{ background: 'white', padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 12, borderBottom: '1px solid #e2e8f0', position: 'sticky', top: 0, zIndex: 10 }}>
@@ -184,7 +184,7 @@ export default function ServiceControlPage({ params }: { params: Promise<{ id: s
           <h1 style={{ margin: 0, fontSize: 16, fontWeight: 800, color: '#0f172a' }}>{service.clients?.name ?? 'Servicio'}</h1>
         </div>
         {/* New message badge in header */}
-        {hasNewCabinMsgs && (
+        {newMsgCount > 0 && (
           <div style={{
             display: 'flex', alignItems: 'center', gap: 4,
             background: '#dcfce7', color: '#15803d',
@@ -192,7 +192,7 @@ export default function ServiceControlPage({ params }: { params: Promise<{ id: s
             fontSize: 11, fontWeight: 800,
             animation: 'cabinPulse 1s ease-in-out infinite',
           }}>
-            <Mailbox style={{ width: 13, height: 13 }} />
+            <MessageSquare style={{ width: 13, height: 13 }} />
             {newMsgCount} nuevo{newMsgCount > 1 ? 's' : ''}
           </div>
         )}
@@ -225,144 +225,89 @@ export default function ServiceControlPage({ params }: { params: Promise<{ id: s
           </div>
         )}
 
-        {/* ── Mensajes de la Cabina ─────────────────────────────────────── */}
-        {cabinMsgs.length > 0 && (
+        {/* ── Mensajes de la Cabina (dispatcher_note) ────────────────────── */}
+        <div style={{
+          background: 'white', borderRadius: 16,
+          border: newMsgCount > 0 ? '2px solid #4ade80' : '1px solid #e2e8f0',
+          overflow: 'hidden', transition: 'all 0.3s',
+        }}>
           <div style={{
-            background: 'white', borderRadius: 16,
-            border: hasNewCabinMsgs ? '2px solid #4ade80' : '1px solid #e2e8f0',
-            overflow: 'hidden',
-            boxShadow: hasNewCabinMsgs ? '0 0 0 4px rgba(74,222,128,0.15)' : 'none',
-            transition: 'all 0.3s',
+            padding: '12px 18px', background: newMsgCount > 0 ? '#f0fdf4' : '#f8fafc',
+            borderBottom: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', gap: 8,
           }}>
-            {/* Section header */}
-            <div style={{
-              padding: '12px 18px',
-              background: hasNewCabinMsgs ? '#f0fdf4' : '#f8fafc',
-              borderBottom: '1px solid #e2e8f0',
-              display: 'flex', alignItems: 'center', gap: 8,
-            }}>
-              <Mailbox style={{ width: 16, height: 16, color: hasNewCabinMsgs ? '#16a34a' : '#64748b' }} />
-              <span style={{ fontSize: 12, fontWeight: 800, color: hasNewCabinMsgs ? '#15803d' : '#475569', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                Mensajes de la Cabina
-              </span>
-              {hasNewCabinMsgs && (
-                <span style={{
-                  marginLeft: 'auto', fontSize: 10, fontWeight: 800,
-                  background: '#16a34a', color: 'white',
-                  padding: '2px 8px', borderRadius: 10,
-                }}>
+            <MessageSquare style={{ width: 16, height: 16, color: newMsgCount > 0 ? '#16a34a' : '#64748b' }} />
+            <span style={{ fontSize: 12, fontWeight: 800, color: newMsgCount > 0 ? '#15803d' : '#475569', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+              Mensajes de la Cabina
+            </span>
+            {newMsgCount > 0 && (
+              <>
+                <span style={{ marginLeft: 'auto', fontSize: 10, fontWeight: 800, background: '#16a34a', color: 'white', padding: '2px 8px', borderRadius: 10 }}>
                   {newMsgCount} NUEVO{newMsgCount > 1 ? 'S' : ''}
                 </span>
-              )}
-              {/* Dismiss badge */}
-              {hasNewCabinMsgs && (
-                <button
-                  onClick={() => setNewMsgCount(0)}
-                  style={{ marginLeft: 4, background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8' }}
-                >
+                <button onClick={() => setNewMsgCount(0)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8' }}>
                   <X style={{ width: 14, height: 14 }} />
                 </button>
-              )}
-            </div>
-
-            {/* Messages list */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
-              {cabinMsgs.map((msg, i) => {
-                const isVoicemail = msg.type === 'voicemail_ptt'
-                const isDispReply = msg.type === 'operator_reply' // dispatcher's reply shown in-thread
-
-                return (
-                  <div key={msg.id} style={{
-                    padding: '14px 18px',
-                    borderBottom: i < cabinMsgs.length - 1 ? '1px solid #f1f5f9' : 'none',
-                    background: isVoicemail ? '#fafafa' : '#f0fdf4',
-                  }}>
-                    {/* Label */}
-                    <p style={{ margin: '0 0 6px', fontSize: 10, fontWeight: 800, color: isVoicemail ? '#6366f1' : '#16a34a', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                      {isVoicemail ? '📬 Mensaje de Cabina' : '💬 Respuesta de Cabina'}
-                    </p>
-
-                    {/* Transcription text */}
-                    {msg.note && (
-                      <p style={{ margin: '0 0 8px', fontSize: 14, color: '#1e293b', lineHeight: 1.5 }}>
-                        {msg.note}
-                      </p>
-                    )}
-
-                    {/* Audio player */}
-                    {isVoicemail && msg.resource_url && (
-                      <audio controls preload="none" style={{ width: '100%', height: 36, borderRadius: 8, marginBottom: 8 }}>
-                        <source src={msg.resource_url} type="audio/webm" />
-                        <source src={msg.resource_url} type="audio/ogg" />
-                      </audio>
-                    )}
-
-                    {/* Time */}
-                    <p style={{ margin: '0 0 8px', fontSize: 11, color: '#94a3b8' }}>
-                      {new Date(msg.created_at).toLocaleString('es-MX', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
-                    </p>
-
-                    {/* Reply button (only for voicemail_ptt) */}
-                    {isVoicemail && (
-                      replyOpen[msg.id] ? (
-                        <div style={{ display: 'flex', gap: 8, marginTop: 6 }}>
-                          <input
-                            type="text"
-                            value={replyText[msg.id] ?? ''}
-                            onChange={e => setReplyText(prev => ({ ...prev, [msg.id]: e.target.value }))}
-                            onKeyDown={e => { if (e.key === 'Enter') handleReply(msg.id) }}
-                            placeholder="Escribe tu respuesta..."
-                            autoFocus
-                            style={{
-                              flex: 1, fontSize: 14, border: '1.5px solid #6366f1',
-                              borderRadius: 10, padding: '10px 14px', color: '#1e293b',
-                              outline: 'none', background: 'white',
-                            }}
-                          />
-                          <button
-                            onClick={() => handleReply(msg.id)}
-                            disabled={replySaving[msg.id] || !(replyText[msg.id] ?? '').trim()}
-                            style={{
-                              flexShrink: 0, width: 44, height: 44, borderRadius: 10,
-                              background: '#6366f1', border: 'none', cursor: 'pointer',
-                              display: 'flex', alignItems: 'center', justifyContent: 'center',
-                              opacity: replySaving[msg.id] ? 0.6 : 1,
-                            }}
-                          >
-                            {replySaving[msg.id]
-                              ? <Loader2 style={{ width: 18, height: 18, color: 'white', animation: 'spin 1s linear infinite' }} />
-                              : <Send style={{ width: 18, height: 18, color: 'white' }} />
-                            }
-                          </button>
-                          <button
-                            onClick={() => setReplyOpen(prev => ({ ...prev, [msg.id]: false }))}
-                            style={{ fontSize: 11, color: '#94a3b8', background: 'none', border: 'none', cursor: 'pointer' }}
-                          >
-                            ✕
-                          </button>
-                          <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
-                        </div>
-                      ) : (
-                        <button
-                          onClick={() => setReplyOpen(prev => ({ ...prev, [msg.id]: true }))}
-                          style={{
-                            display: 'flex', alignItems: 'center', gap: 6,
-                            fontSize: 12, fontWeight: 700, color: '#6366f1',
-                            background: '#eef2ff', border: '1px solid #c7d2fe',
-                            borderRadius: 8, padding: '6px 12px', cursor: 'pointer',
-                          }}
-                        >
-                          <MessageSquare style={{ width: 13, height: 13 }} />
-                          Responder a la cabina
-                        </button>
-                      )
-                    )}
-                  </div>
-                )
-              })}
-            </div>
+              </>
+            )}
           </div>
-        )}
+
+          {cabinMsgs.length === 0 ? (
+            <p style={{ margin: 0, padding: '16px 18px', fontSize: 13, color: '#94a3b8', textAlign: 'center' }}>
+              Sin mensajes de la cabina
+            </p>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
+              {cabinMsgs.map((msg, i) => (
+                <div key={msg.id} style={{
+                  padding: '14px 18px',
+                  borderBottom: i < cabinMsgs.length - 1 ? '1px solid #f1f5f9' : 'none',
+                  background: '#fafafa',
+                }}>
+                  <p style={{ margin: '0 0 4px', fontSize: 10, fontWeight: 800, color: '#2563eb', textTransform: 'uppercase', letterSpacing: '0.05em' }}>💬 Cabina</p>
+                  <p style={{ margin: '0 0 6px', fontSize: 14, color: '#1e293b', lineHeight: 1.5 }}>{msg.note}</p>
+                  <p style={{ margin: 0, fontSize: 11, color: '#94a3b8' }}>
+                    {new Date(msg.created_at).toLocaleString('es-MX', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                  </p>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* ── Enviar nota de texto al despachador ─────────────────────────── */}
+        <div style={{ background: 'white', borderRadius: 16, padding: '16px 18px', border: '1px solid #e2e8f0' }}>
+          <p style={{ margin: '0 0 10px', fontSize: 12, fontWeight: 800, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.05em' }}>💬 Enviar nota a la cabina</p>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <input
+              type="text"
+              value={operatorNote}
+              onChange={e => setOperatorNote(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && sendOperatorNote()}
+              placeholder="Escribe un mensaje para el despachador…"
+              style={{
+                flex: 1, padding: '12px 14px', borderRadius: 10, fontSize: 14,
+                border: '1.5px solid #e2e8f0', outline: 'none', color: '#1e293b',
+              }}
+            />
+            <button
+              onClick={sendOperatorNote}
+              disabled={!operatorNote.trim() || noteSending}
+              style={{
+                width: 48, height: 48, borderRadius: 10, border: 'none',
+                background: noteSent ? 'linear-gradient(135deg,#16a34a,#15803d)' : 'linear-gradient(135deg,#2563eb,#1d4ed8)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                opacity: !operatorNote.trim() || noteSending ? 0.5 : 1, cursor: 'pointer', flexShrink: 0,
+              }}
+            >
+              {noteSending
+                ? <Loader2 style={{ width: 20, height: 20, color: 'white', animation: 'spin 0.8s linear infinite' }} />
+                : <Send style={{ width: 20, height: 20, color: 'white' }} />
+              }
+              <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
+            </button>
+          </div>
+          {noteSent && <p style={{ margin: '8px 0 0', fontSize: 12, color: '#16a34a', fontWeight: 700 }}>✓ Nota enviada a la cabina</p>}
+        </div>
 
         {/* Origen / Destino */}
         <div style={{ background: 'white', borderRadius: 16, padding: '16px 18px', border: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column', gap: 12 }}>
