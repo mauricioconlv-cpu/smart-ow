@@ -56,14 +56,12 @@ export default function ReportsPage() {
       .from('services')
       .select(`
         id, folio, status, costo_calculado, calidad_estrellas,
-        firma_url, tipo_servicio, tipo_asistencia, tiempo_espera,
-        calidad_operador, nombre_cliente_firma, comentarios_calidad,
-        created_at, updated_at, numero_expediente, insurance_folio,
-        origen_coords, destino_coords, distancia_km,
-        marca_vehiculo, modelo_vehiculo, anio_vehiculo,
-        placas_vehiculo, color_vehiculo,
+        firma_url, tipo_servicio, created_at, updated_at,
+        numero_expediente, insurance_folio, origen_coords, destino_coords,
+        tipo_asistencia, tiempo_espera, calidad_operador,
+        nombre_cliente_firma, comentarios_calidad,
         clients ( name ),
-        profiles ( full_name, grua_asignada )
+        profiles ( full_name )
       `)
       .in('status', CLOSED_STATUSES)
       .order('updated_at', { ascending: false })
