@@ -10,6 +10,7 @@ import {
 } from 'lucide-react'
 import { unlockWithReason, closeService } from './actions'
 import ServiceLog from '../components/ServiceLog'
+import DispatcherMessageBar from '../components/DispatcherMessageBar'
 
 const supabase = createBrowserClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -1002,7 +1003,8 @@ export default function ServiceCapturePage() {
 
       {/* ── Bitácora del Expediente ─────────────────────────── */}
       {hasData && (
-        <div className="max-w-4xl mx-auto mt-2 mb-28">
+        <div className="max-w-4xl mx-auto mt-2 mb-28 space-y-4">
+          <DispatcherMessageBar serviceId={id} />
           <ServiceLog serviceId={id} canAddNotes={true} />
         </div>
       )}
