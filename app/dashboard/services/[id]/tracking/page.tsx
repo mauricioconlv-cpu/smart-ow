@@ -10,7 +10,7 @@ import {
   MessageSquare, FileText, AlertCircle, Send, ExternalLink,
 } from 'lucide-react'
 import ServiceLog from '../components/ServiceLog'
-import DispatcherPttBar from '../components/DispatcherPttBar'
+import DispatcherMessageBar from '../components/DispatcherMessageBar'
 
 const supabase = createBrowserClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -355,8 +355,8 @@ export default function TrackingPage() {
         </div>
       </div>
 
-      {/* ── Dispatcher PTT Reply Bar ── */}
-      <DispatcherPttBar serviceId={id} />
+      {/* ── Dispatcher Message Bar ── */}
+      <DispatcherMessageBar serviceId={id} />
 
       {/* ── Bitácora ── */}
       <ServiceLog serviceId={id} canAddNotes={true} />
