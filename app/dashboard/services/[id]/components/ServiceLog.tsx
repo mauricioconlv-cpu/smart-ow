@@ -137,10 +137,10 @@ export default function ServiceLog({ serviceId, canAddNotes }: ServiceLogProps) 
         )}
         {logs.map(log => {
           const cfg = TYPE_CONFIG[log.type] ?? TYPE_CONFIG.manual_note
-          const isAudio     = log.type === 'audio_ptt'
-          const isVoicemail = log.type === 'voicemail_ptt'
-          const isReply     = log.type === 'operator_reply'
-          const hasAudio    = (isAudio || isVoicemail) && log.resource_url
+          const isVoiceNote  = log.type === 'voice_note'
+          const isAudio      = log.type === 'audio_ptt'
+          const isVoicemail  = log.type === 'voicemail_ptt'
+          const hasAudio     = (isVoiceNote || isAudio || isVoicemail) && log.resource_url
 
           return (
             <div key={log.id} className={`flex gap-3 p-3 rounded-lg border ${cfg.bg}`}>
@@ -157,7 +157,7 @@ export default function ServiceLog({ serviceId, canAddNotes }: ServiceLogProps) 
 
               <div className="flex-1 min-w-0">
                 {/* Event label */}
-                {(log.event_label || isAudio || isVoicemail || isReply) && (
+                {(log.event_label || isAudio || isVoicemail || log.type === 'operator_reply' || log.type === 'dispatcher_note' || log.type === 'voice_note') && (
                   <p className={`text-xs font-bold mb-0.5 ${cfg.color}`}>
                     {log.event_label ?? cfg.label}
                   </p>
@@ -168,12 +168,13 @@ export default function ServiceLog({ serviceId, canAddNotes }: ServiceLogProps) 
                   <p className="text-sm text-slate-700 leading-snug">{log.note}</p>
                 )}
 
-                {/* Audio player */}
+                {/* Audio player — voice_note and legacy audio_ptt/voicemail_ptt */}
                 {hasAudio && (
                   <div className="mt-2">
                     <audio controls preload="none" className="w-full h-9" style={{ borderRadius: 8 }}>
                       <source src={log.resource_url!} type="audio/webm" />
                       <source src={log.resource_url!} type="audio/ogg" />
+                      <source src={log.resource_url!} type="audio/mp4" />
                       Tu navegador no soporta audio.
                     </audio>
                   </div>

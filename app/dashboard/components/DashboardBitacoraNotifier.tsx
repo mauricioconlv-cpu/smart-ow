@@ -127,7 +127,7 @@ export default function DashboardBitacoraNotifier() {
             )}
             <div style={{ display: 'flex', gap: 8 }}>
               <Link
-                href={`/dashboard/services/${alert.serviceId}`}
+                href={`/dashboard/services/${alert.serviceId}/tracking`}
                 onClick={() => dismiss(alert.id)}
                 style={{
                   flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
