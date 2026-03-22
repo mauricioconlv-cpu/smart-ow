@@ -1,9 +1,9 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import dynamic from 'next/dynamic'
-import { MapPin, Truck, Radio, Users, LogOut, X, AlertTriangle, Shield, Loader2, Mic } from 'lucide-react'
+import { MapPin, Truck, Radio, Users, LogOut, X, AlertTriangle, Shield, Loader2, Mic, Coffee } from 'lucide-react'
 
 const LiveMap = dynamic(() => import('./components/Map'), {
   ssr: false,
@@ -147,6 +147,7 @@ export default function LiveMonitorPage() {
       .from('profiles')
       .select(`
         id, full_name, grua_asignada, avatar_url, created_at, tow_truck_id,
+        duty_status, duty_status_since,
         tow_trucks!profiles_tow_truck_id_fkey(current_lat, current_lng, current_location)
       `)
       .eq('role', 'operator')
@@ -196,6 +197,17 @@ export default function LiveMonitorPage() {
       setDispatchers(enriched)
     }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Realtime: actualizar cuando operador cambia duty_status
+  useEffect(() => {
+    const channel = supabase
+      .channel('monitor-duty-status')
+      .on('postgres_changes', {
+        event: 'UPDATE', schema: 'public', table: 'profiles',
+      }, () => { fetchPersonnel() })
+      .subscribe()
+    return () => { supabase.removeChannel(channel) }
+  }, [fetchPersonnel])
 
   useEffect(() => {
     fetchPersonnel()
@@ -331,6 +343,8 @@ export default function LiveMonitorPage() {
                 sub={op.grua_asignada ? `Grúa: ${op.grua_asignada}` : 'Sin grúa asignada'}
                 online={true}
                 avatarUrl={op.avatar_url}
+                dutyStatus={op.duty_status ?? 'active'}
+                dutySince={op.duty_status_since}
                 canForceLogout={canForceLogout}
                 onForceLogout={() => setModalOperator({ id: op.id, full_name: op.full_name, grua_asignada: op.grua_asignada })}
                 hasAudioAlert={audioAlerts[op.id] !== undefined}
@@ -424,7 +438,7 @@ export default function LiveMonitorPage() {
 }
 
 function PersonnelRow({
-  name, sub, online, icon, avatarUrl, badge, canForceLogout, onForceLogout, hasAudioAlert, onClearAudioAlert,
+  name, sub, online, icon, avatarUrl, badge, dutyStatus, dutySince, canForceLogout, onForceLogout, hasAudioAlert, onClearAudioAlert,
 }: {
   name: string
   sub: string
@@ -432,71 +446,110 @@ function PersonnelRow({
   icon?: string
   avatarUrl?: string | null
   badge?: 'supervisor'
+  dutyStatus?: 'active' | 'break' | 'pause' | 'offline' | string
+  dutySince?: string | null
   canForceLogout?: boolean
   onForceLogout?: () => void
   hasAudioAlert?: boolean
   onClearAudioAlert?: () => void
 }) {
+  // Live timer for break/pause
+  const [elapsed, setElapsed] = useState(0)
+  useEffect(() => {
+    if (!dutySince || dutyStatus === 'active' || dutyStatus === 'offline') { setElapsed(0); return }
+    const base = Date.now() - new Date(dutySince).getTime()
+    setElapsed(Math.floor(base / 1000))
+    const iv = setInterval(() => setElapsed(s => s + 1), 1000)
+    return () => clearInterval(iv)
+  }, [dutySince, dutyStatus])
+
+  const fmtSecs = (s: number) => {
+    const m = Math.floor(s / 60)
+    const sec = s % 60
+    return `${String(m).padStart(2,'0')}:${String(sec).padStart(2,'0')}`
+  }
+
+  const dutyBadge = !dutyStatus || dutyStatus === 'active' ? null
+    : dutyStatus === 'break' ? { label: '☕ Break', bg: '#fef3c7', color: '#92400e', timer: elapsed }
+    : dutyStatus === 'pause' ? { label: '⏸ Pausa', bg: '#ede9fe', color: '#5b21b6', timer: elapsed }
+    : null
+
   return (
-    <div className={`flex items-center gap-3 px-3 py-2.5 rounded-lg ${online ? 'bg-white' : 'bg-slate-50 opacity-60'}`}>
-      <div className={`relative w-9 h-9 rounded-full flex-shrink-0 overflow-hidden border-2 ${online ? 'border-green-400' : 'border-slate-200'}`}>
-        {avatarUrl ? (
-          <img src={avatarUrl} alt={name} className="w-full h-full object-cover" />
-        ) : (
-          <div className={`w-full h-full flex items-center justify-center text-xs font-black ${online ? 'bg-blue-100 text-blue-700' : 'bg-slate-200 text-slate-500'}`}>
-            {icon === 'truck'
-              ? <Truck className="w-4 h-4" />
-              : (name?.[0]?.toUpperCase() ?? '?')}
-          </div>
-        )}
-        <span className={`absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full border border-white ${online ? 'bg-green-500' : 'bg-slate-300'}`} />
-      </div>
-      <div className="flex-1 min-w-0">
-        <p className="text-sm font-semibold text-slate-800 truncate flex items-center gap-1">
-          {name}
-          {badge === 'supervisor' && (
-            <span aria-label="Supervisor" title="Supervisor" style={{ display: 'inline-flex' }}>
-              <Shield className="w-3 h-3 text-amber-500 flex-shrink-0" />
-            </span>
+    <div className={`flex flex-col gap-1 px-3 py-2.5 rounded-lg ${online ? 'bg-white' : 'bg-slate-50 opacity-60'}`}>
+      <div style={{ display:'flex', alignItems:'center', gap:12 }}>
+        <div className={`relative w-9 h-9 rounded-full flex-shrink-0 overflow-hidden border-2 ${online ? 'border-green-400' : 'border-slate-200'}`}>
+          {avatarUrl ? (
+            <img src={avatarUrl} alt={name} className="w-full h-full object-cover" />
+          ) : (
+            <div className={`w-full h-full flex items-center justify-center text-xs font-black ${online ? 'bg-blue-100 text-blue-700' : 'bg-slate-200 text-slate-500'}`}>
+              {icon === 'truck'
+                ? <Truck className="w-4 h-4" />
+                : (name?.[0]?.toUpperCase() ?? '?')}
+            </div>
           )}
-        </p>
-        <p className="text-xs text-slate-500 truncate">{sub}</p>
+          <span className={`absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full border border-white ${online ? 'bg-green-500' : 'bg-slate-300'}`} />
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-semibold text-slate-800 truncate flex items-center gap-1">
+            {name}
+            {badge === 'supervisor' && (
+              <span aria-label="Supervisor" title="Supervisor" style={{ display: 'inline-flex' }}>
+                <Shield className="w-3 h-3 text-amber-500 flex-shrink-0" />
+              </span>
+            )}
+          </p>
+          <p className="text-xs text-slate-500 truncate">{sub}</p>
+        </div>
+
+        {/* Alerta de audio (PTT) */}
+        {hasAudioAlert ? (
+          <button
+            onClick={onClearAudioAlert}
+            title="Nuevo mensaje de voz recibido"
+            className="flex-shrink-0 animate-pulse bg-red-100 border border-red-300 rounded-full w-8 h-8 flex items-center justify-center cursor-pointer transition-colors hover:bg-red-200"
+          >
+            <Mic className="w-4 h-4 text-red-600" />
+          </button>
+        ) : canForceLogout && onForceLogout ? (
+          <button
+            onClick={onForceLogout}
+            title="Forzar cierre de turno"
+            style={{
+              flexShrink: 0,
+              width: 28, height: 28, borderRadius: 8,
+              background: 'rgba(239,68,68,0.08)',
+              border: '1px solid rgba(239,68,68,0.2)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              cursor: 'pointer', transition: 'all 0.15s',
+            }}
+            onMouseEnter={e => {
+              (e.currentTarget as HTMLButtonElement).style.background = 'rgba(239,68,68,0.18)'
+            }}
+            onMouseLeave={e => {
+              (e.currentTarget as HTMLButtonElement).style.background = 'rgba(239,68,68,0.08)'
+            }}
+          >
+            <LogOut style={{ width: 13, height: 13, color: '#ef4444' }} />
+          </button>
+        ) : (
+          <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${online ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-500'}`}>
+            {online ? 'En línea' : 'Offline'}
+          </span>
+        )}
       </div>
 
-      {/* Alerta de audio (PTT) */}
-      {hasAudioAlert ? (
-        <button
-          onClick={onClearAudioAlert}
-          title="Nuevo mensaje de voz recibido"
-          className="flex-shrink-0 animate-pulse bg-red-100 border border-red-300 rounded-full w-8 h-8 flex items-center justify-center cursor-pointer transition-colors hover:bg-red-200"
-        >
-          <Mic className="w-4 h-4 text-red-600" />
-        </button>
-      ) : canForceLogout && onForceLogout ? (
-        <button
-          onClick={onForceLogout}
-          title="Forzar cierre de turno"
-          style={{
-            flexShrink: 0,
-            width: 28, height: 28, borderRadius: 8,
-            background: 'rgba(239,68,68,0.08)',
-            border: '1px solid rgba(239,68,68,0.2)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            cursor: 'pointer', transition: 'all 0.15s',
-          }}
-          onMouseEnter={e => {
-            (e.currentTarget as HTMLButtonElement).style.background = 'rgba(239,68,68,0.18)'
-          }}
-          onMouseLeave={e => {
-            (e.currentTarget as HTMLButtonElement).style.background = 'rgba(239,68,68,0.08)'
-          }}
-        >
-          <LogOut style={{ width: 13, height: 13, color: '#ef4444' }} />
-        </button>
-      ) : (
-        <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${online ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-500'}`}>
-          {online ? 'En línea' : 'Offline'}
-        </span>
+      {/* Duty status badge with live timer */}
+      {dutyBadge && (
+        <div style={{
+          display:'flex', alignItems:'center', gap:6,
+          background: dutyBadge.bg, borderRadius:8, padding:'3px 10px',
+          marginLeft:48, width:'fit-content',
+        }}>
+          <span style={{ fontSize:11, fontWeight:700, color: dutyBadge.color }}>{dutyBadge.label}</span>
+          {dutyBadge.timer > 0 && (
+            <span style={{ fontSize:11, fontFamily:'monospace', color: dutyBadge.color, opacity:0.8 }}>{fmtSecs(dutyBadge.timer)}</span>
+          )}
+        </div>
       )}
     </div>
   )

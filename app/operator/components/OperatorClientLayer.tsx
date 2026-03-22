@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useRef } from 'react'
+import { useEffect, useState, useRef, useCallback } from 'react'
 import dynamic from 'next/dynamic'
 import Link from 'next/link'
 import { MapPin, ArrowRight, Bell, X, Menu, Coffee, PauseCircle, LogOut, Truck, ChevronDown, ChevronUp, Archive } from 'lucide-react'
@@ -38,8 +38,47 @@ export default function OperatorClientLayer() {
   const [newServiceAlert, setNewServiceAlert] = useState(false)
   const [menuOpen,     setMenuOpen]     = useState(false)
   const [statusMode,   setStatusMode]   = useState<'active' | 'break' | 'pause'>('active')
+  const [statusSince,  setStatusSince]  = useState<Date>(new Date())
+  const [elapsed,      setElapsed]      = useState(0) // seconds
   const [showClosed,   setShowClosed]   = useState(false)
+  const supabaseRef    = useRef<any>(null)
   const prevServiceCount = useRef(0)
+
+  // ── Timer para break/pausa ──────────────────────────────────
+  useEffect(() => {
+    if (statusMode === 'active') { setElapsed(0); return }
+    setElapsed(0)
+    setStatusSince(new Date())
+    const iv = setInterval(() => setElapsed(s => s + 1), 1000)
+    return () => clearInterval(iv)
+  }, [statusMode])
+
+  const fmtTime = (s: number) => {
+    const h = Math.floor(s / 3600)
+    const m = Math.floor((s % 3600) / 60)
+    const sec = s % 60
+    return h > 0
+      ? `${h}:${String(m).padStart(2,'0')}:${String(sec).padStart(2,'0')}`
+      : `${String(m).padStart(2,'0')}:${String(sec).padStart(2,'0')}`
+  }
+
+  // ── Set duty status in DB (RPC) ──────────────────────────────
+  const setDutyStatus = useCallback(async (status: 'active' | 'break' | 'pause' | 'offline') => {
+    try {
+      const { createClient } = await import('@/lib/supabase/client')
+      const sb = supabaseRef.current ?? createClient()
+      supabaseRef.current = sb
+      await sb.rpc('set_operator_duty_status', { p_status: status })
+    } catch (e) {
+      console.error('[DutyStatus] RPC error:', e)
+    }
+  }, [])
+
+  const handleStatusChange = useCallback((mode: 'active' | 'break' | 'pause') => {
+    setStatusMode(mode)
+    setMenuOpen(false)
+    setDutyStatus(mode)
+  }, [setDutyStatus])
 
   const playNotification = () => {
     try {
@@ -112,6 +151,13 @@ export default function OperatorClientLayer() {
 
         loadData()
         const iv = setInterval(loadData, 5000)
+
+        // Mark duty status as active on mount
+        const { createClient: cc } = await import('@/lib/supabase/client')
+        const sb = cc()
+        supabaseRef.current = sb
+        try { await sb.rpc('set_operator_duty_status', { p_status: 'active' }) } catch {}
+
         return () => clearInterval(iv)
       } catch (e: any) {
         setDbError(e.message || 'Error inesperado.')
@@ -121,6 +167,7 @@ export default function OperatorClientLayer() {
   }, [])
 
   async function handleEndShift() {
+    await setDutyStatus('offline')
     await fetch('/api/operator/link-truck', { method: 'DELETE' })
     window.location.reload()
   }
@@ -195,10 +242,13 @@ export default function OperatorClientLayer() {
           </div>
         </div>
 
-        {/* Status badge */}
+        {/* Status badge with TIMER */}
         <div style={{ background:'rgba(0,0,0,0.25)', borderRadius:20, padding:'4px 12px 4px 8px', display:'flex', alignItems:'center', gap:6 }}>
           <div style={{ width:8, height:8, borderRadius:'50%', background: statusMode === 'active' ? '#4ade80' : statusMode === 'break' ? '#fbbf24' : '#a5b4fc' }} />
           <span style={{ fontSize:11, color:'white', fontWeight:700 }}>{statusModeConfig[statusMode].label}</span>
+          {statusMode !== 'active' && elapsed > 0 && (
+            <span style={{ fontSize:11, color:'rgba(255,255,255,0.7)', fontFamily:'monospace', marginLeft:4 }}>{fmtTime(elapsed)}</span>
+          )}
         </div>
       </div>
 
@@ -231,7 +281,7 @@ export default function OperatorClientLayer() {
           ].map(opt => (
             <button
               key={opt.key}
-              onClick={() => { setStatusMode(opt.key); setMenuOpen(false) }}
+              onClick={() => handleStatusChange(opt.key)}
               style={{
                 width:'100%', display:'flex', alignItems:'center', gap:12,
                 padding:'12px 14px', borderRadius:12, border:'none', cursor:'pointer',
