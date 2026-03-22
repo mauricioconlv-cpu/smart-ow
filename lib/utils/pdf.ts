@@ -1,20 +1,4 @@
 import { jsPDF } from 'jspdf'
-import 'jspdf-autotable'
-
-// Helper: load image from URL as base64 for jsPDF
-async function loadImageAsBase64(url: string): Promise<string | null> {
-  try {
-    const res = await fetch(url)
-    if (!res.ok) return null
-    const blob = await res.blob()
-    return await new Promise((resolve, reject) => {
-      const reader = new FileReader()
-      reader.onload = () => resolve(reader.result as string)
-      reader.onerror = reject
-      reader.readAsDataURL(blob)
-    })
-  } catch { return null }
-}
 
 const TIPO_LABELS: Record<string, string> = {
   grua:      'Grúa',
@@ -33,259 +17,196 @@ const CALIDAD_LABELS: Record<string, string> = {
   regular:   'Regular',
   mala:      'Mala',
 }
+const STEP_ORDER = [
+  { key: 'rumbo_contacto',     label: 'En Camino al Origen' },
+  { key: 'arribo_origen',      label: 'Llegó al Origen' },
+  { key: 'contacto_usuario',   label: 'Contacto con Usuario' },
+  { key: 'contacto',           label: 'Maniobra / Enganche' },
+  { key: 'inicio_traslado',    label: 'En Traslado al Destino' },
+  { key: 'traslado_concluido', label: 'Entregado en Destino' },
+  { key: 'servicio_cerrado',   label: 'Servicio Cerrado' },
+]
+
+function statusIndex(s: string) {
+  return STEP_ORDER.findIndex(x => x.key === s)
+}
+
+// ── Helper: draw a section header ─────────────────────────────────────
+function sectionHeader(doc: jsPDF, text: string, y: number, pageW: number, mx: number) {
+  doc.setFillColor(37, 99, 235)
+  doc.rect(mx, y - 4, pageW - mx * 2, 7, 'F')
+  doc.setTextColor(255, 255, 255)
+  doc.setFontSize(9)
+  doc.setFont('helvetica', 'bold')
+  doc.text(text.toUpperCase(), mx + 2, y + 0.5)
+  doc.setTextColor(30, 41, 59)
+  doc.setFont('helvetica', 'normal')
+  return y + 9
+}
+
+// ── Helper: draw a row (label + value) ────────────────────────────────
+function row(doc: jsPDF, label: string, value: string, y: number, mx: number, pageW: number) {
+  doc.setFontSize(8.5)
+  doc.setFont('helvetica', 'bold')
+  doc.setTextColor(71, 85, 105)
+  doc.text(label + ':', mx, y)
+  doc.setFont('helvetica', 'normal')
+  doc.setTextColor(15, 23, 42)
+  // Wrap value if long
+  const maxW = pageW - mx - mx - 48
+  const lines = doc.splitTextToSize(value || '—', maxW)
+  doc.text(lines, mx + 48, y)
+  return y + (lines.length > 1 ? lines.length * 5 : 6)
+}
 
 export async function generateDescriptiveMemory(
   service: any,
   companyLogoUrl?: string | null,
   companyName?: string | null
 ) {
-  const doc = new jsPDF({ unit: 'mm', format: 'a4' })
+  const doc   = new jsPDF({ unit: 'mm', format: 'a4' })
   const pageW = doc.internal.pageSize.getWidth()
-  const margin = 14
-  let y = margin
-
-  // ── LOGO + HEADER ──────────────────────────────────────────────────────
-  // Load logo
-  const logoB64 = companyLogoUrl ? await loadImageAsBase64(companyLogoUrl) : null
-
-  if (logoB64) {
-    try { doc.addImage(logoB64, 'PNG', margin, y, 36, 18, undefined, 'FAST') } catch {}
-    // Company name next to logo
-    doc.setFontSize(14)
-    doc.setFont('helvetica', 'bold')
-    doc.setTextColor(15, 23, 42)
-    doc.text(companyName ?? '', margin + 40, y + 8)
-    doc.setFont('helvetica', 'normal')
-    y += 24
-  } else {
-    // Text header fallback
-    doc.setFontSize(16)
-    doc.setFont('helvetica', 'bold')
-    doc.setTextColor(37, 99, 235)
-    doc.text(companyName ?? 'Smart Tow', margin, y + 6)
-    y += 12
-  }
-
-  // Top rule
-  doc.setDrawColor(37, 99, 235)
-  doc.setLineWidth(0.8)
-  doc.line(margin, y, pageW - margin, y)
-  y += 6
-
-  // Title
-  doc.setFontSize(13)
-  doc.setFont('helvetica', 'bold')
-  doc.setTextColor(15, 23, 42)
-  doc.text('MEMORIA DESCRIPTIVA DE SERVICIO', margin, y)
-  y += 3
-
-  // Sub-rule
-  doc.setDrawColor(200, 200, 200)
-  doc.setLineWidth(0.3)
-  doc.line(margin, y, pageW - margin, y)
-  y += 8
-
-  // ── DATOS DEL SERVICIO ────────────────────────────────────────────────
-  doc.setFontSize(10)
-  doc.setFont('helvetica', 'bold')
-  doc.setTextColor(71, 85, 105)
-  doc.text('DATOS GENERALES', margin, y); y += 5
-
-  const generalData = [
-    ['Folio del Servicio',     `#${service.folio}`],
-    ['Cliente / Aseguradora',  service.clients?.name ?? 'N/A'],
-    ['Folio Aseguradora',      service.insurance_folio ?? '—'],
-    ['Tipo de Servicio',       service.tipo_servicio ?? '—'],
-    ['Fecha de Solicitud',     new Date(service.created_at).toLocaleString('es-MX')],
-    ['Fecha de Cierre',        service.updated_at ? new Date(service.updated_at).toLocaleString('es-MX') : '—'],
-  ]
-
-  ;(doc as any).autoTable({
-    startY: y,
-    head: [],
-    body: generalData,
-    theme: 'plain',
-    styles: { fontSize: 9, cellPadding: 2.5, textColor: [30, 41, 59] },
-    columnStyles: {
-      0: { fontStyle: 'bold', cellWidth: 55, textColor: [71, 85, 105] },
-      1: { cellWidth: 110 },
-    },
-    margin: { left: margin, right: margin },
-  })
-  y = (doc as any).lastAutoTable.finalY + 8
-
-  // ── VEHÍCULO ──────────────────────────────────────────────────────────
-  const vehicle = [service.marca_vehiculo, service.modelo_vehiculo, service.anio_vehiculo].filter(Boolean).join(' ')
-  if (vehicle || service.placas_vehiculo || service.color_vehiculo) {
-    doc.setFont('helvetica', 'bold')
-    doc.setTextColor(71, 85, 105)
-    doc.setFontSize(10)
-    doc.text('VEHÍCULO ASISTIDO', margin, y); y += 5
-
-    const vehicleData = [
-      ['Vehículo',  vehicle || '—'],
-      ['Placas',    service.placas_vehiculo ?? '—'],
-      ['Color',     service.color_vehiculo ?? '—'],
-    ]
-    ;(doc as any).autoTable({
-      startY: y, head: [], body: vehicleData, theme: 'plain',
-      styles: { fontSize: 9, cellPadding: 2.5, textColor: [30, 41, 59] },
-      columnStyles: { 0: { fontStyle: 'bold', cellWidth: 55, textColor: [71, 85, 105] }, 1: { cellWidth: 110 } },
-      margin: { left: margin, right: margin },
-    })
-    y = (doc as any).lastAutoTable.finalY + 8
-  }
-
-  // ── TRAYECTO ──────────────────────────────────────────────────────────
-  doc.setFont('helvetica', 'bold')
-  doc.setTextColor(71, 85, 105)
-  doc.setFontSize(10)
-  doc.text('TRAYECTO REALIZADO', margin, y); y += 5
-
-  const routeData = [
-    ['Origen',    service.origen_address || service.origen_coords?.address || 'Sin registrar'],
-    ['Destino',   service.destino_address || service.destino_coords?.address || 'Sin registrar'],
-    ['Distancia', service.distancia_km != null ? `${service.distancia_km} km` : '—'],
-  ]
-  ;(doc as any).autoTable({
-    startY: y, head: [], body: routeData, theme: 'plain',
-    styles: { fontSize: 9, cellPadding: 2.5, textColor: [30, 41, 59] },
-    columnStyles: { 0: { fontStyle: 'bold', cellWidth: 55, textColor: [71, 85, 105] }, 1: { cellWidth: 110 } },
-    margin: { left: margin, right: margin },
-  })
-  y = (doc as any).lastAutoTable.finalY + 8
-
-  // ── PROGRESO DEL SERVICIO ─────────────────────────────────────────────
-  const stepLabels: Record<string, string> = {
-    rumbo_contacto:     '🚛 En Camino al Origen',
-    arribo_origen:      '📍 Llegó al Origen',
-    contacto_usuario:   '🤝 Contacto con Usuario',
-    contacto:           '🔗 Maniobra / Enganche',
-    inicio_traslado:    '🏎️ En Traslado al Destino',
-    traslado_concluido: '🏁 Entregado en Destino',
-    servicio_cerrado:   '✅ Servicio Cerrado',
-  }
-
-  doc.setFont('helvetica', 'bold')
-  doc.setTextColor(71, 85, 105)
-  doc.setFontSize(10)
-  doc.text('PROGRESO DEL SERVICIO', margin, y); y += 5
-
-  const stepRows = Object.entries(stepLabels).map(([key, label]) => {
-    const reached = isStatusReached(service.status, key)
-    return [reached ? '✔' : '○', label, reached ? 'Completado' : 'Pendiente']
-  })
-
-  ;(doc as any).autoTable({
-    startY: y,
-    head: [['', 'Etapa', 'Estado']],
-    body: stepRows,
-    theme: 'striped',
-    headStyles: { fillColor: [37, 99, 235], textColor: 255, fontSize: 9, fontStyle: 'bold' },
-    styles: { fontSize: 9, cellPadding: 2.5 },
-    columnStyles: { 0: { cellWidth: 12 }, 1: { cellWidth: 100 }, 2: { cellWidth: 40 } },
-    margin: { left: margin, right: margin },
-    didDrawCell: (data: any) => {
-      if (data.column.index === 2 && data.cell.raw === 'Completado') {
-        doc.setTextColor(22, 163, 74)
-      }
-    },
-  })
-  y = (doc as any).lastAutoTable.finalY + 8
-
-  // ── ECONÓMICO ─────────────────────────────────────────────────────────
-  if (service.costo_calculado) {
-    doc.setFont('helvetica', 'bold')
-    doc.setTextColor(71, 85, 105)
-    doc.setFontSize(10)
-    doc.text('RESUMEN FINANCIERO', margin, y); y += 5
-
-    const finData = [
-      ['Tipo de tarifa', service.tipo_servicio === 'local' ? 'Local (Fija)' : 'Foránea (Banderazo + Km)'],
-      ['Total a Facturar', `$${Number(service.costo_calculado).toLocaleString('es-MX', { minimumFractionDigits: 2 })} MXN`],
-    ]
-    ;(doc as any).autoTable({
-      startY: y, head: [], body: finData, theme: 'plain',
-      styles: { fontSize: 9, cellPadding: 2.5, textColor: [30, 41, 59] },
-      columnStyles: { 0: { fontStyle: 'bold', cellWidth: 55, textColor: [71, 85, 105] }, 1: { cellWidth: 110 } },
-      margin: { left: margin, right: margin },
-    })
-    y = (doc as any).lastAutoTable.finalY + 8
-  }
-
-  // ── ENCUESTA DE CALIDAD ───────────────────────────────────────────────
-  doc.setFont('helvetica', 'bold')
-  doc.setTextColor(71, 85, 105)
-  doc.setFontSize(10)
-  doc.text('ENCUESTA DE CALIDAD', margin, y); y += 5
-
-  const qualityData: [string, string][] = [
-    ['Tipo de Asistencia',       TIPO_LABELS[service.tipo_asistencia]   ?? service.tipo_asistencia   ?? '—'],
-    ['Tiempo de Espera',         ESPERA_LABELS[service.tiempo_espera]   ?? service.tiempo_espera     ?? '—'],
-    ['Atención del Operador',    CALIDAD_LABELS[service.calidad_operador] ?? service.calidad_operador ?? '—'],
-    ['Calificación (estrellas)', service.calidad_estrellas ? `${'★'.repeat(service.calidad_estrellas)}${'☆'.repeat(5 - service.calidad_estrellas)} (${service.calidad_estrellas}/5)` : '—'],
-    ['Observaciones',            service.comentarios_calidad || '—'],
-    ['Nombre del Cliente',       service.nombre_cliente_firma || '—'],
-  ]
-  ;(doc as any).autoTable({
-    startY: y, head: [], body: qualityData, theme: 'plain',
-    styles: { fontSize: 9, cellPadding: 2.5, textColor: [30, 41, 59] },
-    columnStyles: { 0: { fontStyle: 'bold', cellWidth: 55, textColor: [71, 85, 105] }, 1: { cellWidth: 110 } },
-    margin: { left: margin, right: margin },
-  })
-  y = (doc as any).lastAutoTable.finalY + 10
-
-  // ── FIRMA ─────────────────────────────────────────────────────────────
-  if (service.firma_url) {
-    // Check if new page needed
-    if (y > 220) { doc.addPage(); y = margin }
-
-    doc.setFont('helvetica', 'bold')
-    doc.setTextColor(71, 85, 105)
-    doc.setFontSize(10)
-    doc.text('FIRMA DE CONFORMIDAD', margin, y); y += 4
-
-    const firmaB64 = await loadImageAsBase64(service.firma_url)
-    if (firmaB64) {
-      try { doc.addImage(firmaB64, 'PNG', margin, y, 70, 35, undefined, 'FAST') } catch {}
-    } else {
-      doc.setFont('helvetica', 'italic')
-      doc.setFontSize(9)
-      doc.setTextColor(150, 150, 150)
-      doc.text('(Firma no disponible)', margin, y + 10)
-    }
-
-    // Signature line label
-    doc.setFontSize(9)
-    doc.setFont('helvetica', 'normal')
-    doc.setTextColor(100, 116, 139)
-    doc.text(`Firmado por: ${service.nombre_cliente_firma ?? 'Cliente'}`, margin, y + 40)
-    y += 48
-  }
-
-  // ── FOOTER ────────────────────────────────────────────────────────────
   const pageH = doc.internal.pageSize.getHeight()
-  doc.setDrawColor(200, 200, 200)
-  doc.setLineWidth(0.3)
-  doc.line(margin, pageH - 18, pageW - margin, pageH - 18)
+  const mx    = 14
+  let   y     = mx
+
+  // ── HEADER ────────────────────────────────────────────────────────
+  // Blue top bar
+  doc.setFillColor(37, 99, 235)
+  doc.rect(0, 0, pageW, 18, 'F')
+
+  // Logo (try, skip on error — no fetch needed if url is already an image)
+  let logoOk = false
+  if (companyLogoUrl) {
+    try {
+      doc.addImage(companyLogoUrl, 'PNG', mx, 2, 0, 14)
+      logoOk = true
+    } catch {}
+    if (!logoOk) {
+      try {
+        doc.addImage(companyLogoUrl, 'JPEG', mx, 2, 0, 14)
+        logoOk = true
+      } catch {}
+    }
+  }
+
+  // Company name / title
+  doc.setTextColor(255, 255, 255)
+  doc.setFont('helvetica', 'bold')
+  doc.setFontSize(11)
+  const titleX = logoOk ? mx + 36 : mx
+  doc.text(companyName ?? 'Smart Tow', titleX, 8)
   doc.setFontSize(8)
   doc.setFont('helvetica', 'normal')
+  doc.text('MEMORIA DESCRIPTIVA DE SERVICIO', titleX, 14)
+
+  // Folio badge (top right)
+  doc.setFontSize(10)
+  doc.setFont('helvetica', 'bold')
+  doc.text(`Folio #${service.folio}`, pageW - mx - 24, 11)
+
+  y = 24
+
+  // ── DATOS GENERALES ────────────────────────────────────────────────
+  y = sectionHeader(doc, '1. Datos Generales', y, pageW, mx)
+  y = row(doc, 'Cliente', (service.clients as any)?.name ?? '—', y, mx, pageW)
+  y = row(doc, 'Folio Aseguradora', service.insurance_folio ?? '—', y, mx, pageW)
+  y = row(doc, 'Expediente', service.numero_expediente ?? '—', y, mx, pageW)
+  y = row(doc, 'Tipo de Servicio', service.tipo_servicio ?? '—', y, mx, pageW)
+  y = row(doc, 'Operador Asignado', (service.profiles as any)?.full_name ?? '—', y, mx, pageW)
+  y = row(doc, 'Fecha Solicitud', new Date(service.created_at).toLocaleString('es-MX'), y, mx, pageW)
+  y = row(doc, 'Fecha Cierre', service.updated_at ? new Date(service.updated_at).toLocaleString('es-MX') : '—', y, mx, pageW)
+  y += 4
+
+  // ── TRAYECTO ──────────────────────────────────────────────────────
+  y = sectionHeader(doc, '2. Trayecto Realizado', y, pageW, mx)
+  const origen  = (service.origen_coords as any)?.address  ?? service.origen_coords  ?? '—'
+  const destino = (service.destino_coords as any)?.address ?? service.destino_coords ?? '—'
+  y = row(doc, 'Origen', typeof origen  === 'string' ? origen  : JSON.stringify(origen),  y, mx, pageW)
+  y = row(doc, 'Destino', typeof destino === 'string' ? destino : JSON.stringify(destino), y, mx, pageW)
+  y += 4
+
+  // ── PROGRESO ──────────────────────────────────────────────────────
+  y = sectionHeader(doc, '3. Etapas del Servicio', y, pageW, mx)
+  const curIdx = statusIndex(service.status)
+  STEP_ORDER.forEach((step, i) => {
+    const done = curIdx >= 0 && i <= curIdx
+    doc.setFontSize(8.5)
+    doc.setFont('helvetica', 'normal')
+    doc.setTextColor(done ? 22 : 148, done ? 163 : 163, done ? 74 : 184)
+    doc.text(done ? '✔' : '○', mx, y)
+    doc.setTextColor(15, 23, 42)
+    doc.text(step.label, mx + 8, y)
+    if (done) {
+      doc.setTextColor(22, 163, 74)
+      doc.text('Completado', pageW - mx - 22, y)
+      doc.setTextColor(15, 23, 42)
+    }
+    y += 5.5
+  })
+  y += 4
+
+  // ── FINANCIERO ────────────────────────────────────────────────────
+  if (service.costo_calculado) {
+    y = sectionHeader(doc, '4. Resumen Financiero', y, pageW, mx)
+    y = row(doc, 'Tarifa', service.tipo_servicio === 'local' ? 'Local (Fija)' : 'Foránea (Banderazo + Km)', y, mx, pageW)
+    doc.setFontSize(10)
+    doc.setFont('helvetica', 'bold')
+    doc.setTextColor(22, 163, 74)
+    doc.text(`Total: $${Number(service.costo_calculado).toLocaleString('es-MX', { minimumFractionDigits: 2 })} MXN`, mx, y)
+    doc.setFont('helvetica', 'normal')
+    doc.setTextColor(15, 23, 42)
+    y += 9
+  }
+
+  // ── ENCUESTA ──────────────────────────────────────────────────────
+  y = sectionHeader(doc, '5. Encuesta de Calidad', y, pageW, mx)
+  y = row(doc, 'Tipo de Asistencia',    TIPO_LABELS[service.tipo_asistencia] ?? service.tipo_asistencia ?? '—', y, mx, pageW)
+  y = row(doc, 'Tiempo de Espera',      ESPERA_LABELS[service.tiempo_espera] ?? service.tiempo_espera ?? '—', y, mx, pageW)
+  y = row(doc, 'Atención del Operador', CALIDAD_LABELS[service.calidad_operador] ?? service.calidad_operador ?? '—', y, mx, pageW)
+  const stars = service.calidad_estrellas ?? 0
+  y = row(doc, 'Calificación',          stars > 0 ? `${'★'.repeat(stars)}${'☆'.repeat(5 - stars)} (${stars}/5)` : '—', y, mx, pageW)
+  y = row(doc, 'Observaciones',         service.comentarios_calidad ?? '—', y, mx, pageW)
+  y = row(doc, 'Nombre del Cliente',    service.nombre_cliente_firma ?? '—', y, mx, pageW)
+  y += 4
+
+  // ── FIRMA ─────────────────────────────────────────────────────────
+  if (service.firma_url) {
+    // New page if not enough space
+    if (y > pageH - 60) { doc.addPage(); y = mx }
+    y = sectionHeader(doc, '6. Firma de Conformidad', y, pageW, mx)
+    try {
+      doc.addImage(service.firma_url, 'PNG', mx, y, 70, 35)
+      y += 38
+    } catch {
+      try {
+        doc.addImage(service.firma_url, 'JPEG', mx, y, 70, 35)
+        y += 38
+      } catch {
+        doc.setFontSize(8)
+        doc.setTextColor(148, 163, 184)
+        doc.text('(Firma no disponible para este expediente)', mx, y + 5)
+        y += 12
+      }
+    }
+    doc.setFontSize(8)
+    doc.setFont('helvetica', 'normal')
+    doc.setTextColor(71, 85, 105)
+    doc.text(`Firmado por: ${service.nombre_cliente_firma ?? 'Cliente'}`, mx, y)
+    y += 6
+  }
+
+  // ── FOOTER ────────────────────────────────────────────────────────
+  doc.setDrawColor(203, 213, 225)
+  doc.setLineWidth(0.3)
+  doc.line(mx, pageH - 12, pageW - mx, pageH - 12)
+  doc.setFontSize(7)
   doc.setTextColor(148, 163, 184)
   doc.text(
-    `Generado el ${new Date().toLocaleString('es-MX')} · ${companyName ?? 'Smart Tow'} · Documento oficial del servicio`,
-    margin, pageH - 12
+    `Generado: ${new Date().toLocaleString('es-MX')}  ·  ${companyName ?? 'Smart Tow'}  ·  Documento oficial del servicio`,
+    mx, pageH - 7
   )
 
+  // ── SAVE ──────────────────────────────────────────────────────────
   doc.save(`Memoria_Descriptiva_Folio_${service.folio}.pdf`)
-}
-
-// Helper: check if a status has been reached in the flow
-function isStatusReached(currentStatus: string, targetStatus: string): boolean {
-  const ORDER = [
-    'rumbo_contacto', 'arribo_origen', 'contacto_usuario',
-    'contacto', 'inicio_traslado', 'traslado_concluido', 'servicio_cerrado',
-  ]
-  const curr = ORDER.indexOf(currentStatus)
-  const tgt  = ORDER.indexOf(targetStatus)
-  return curr >= 0 && tgt >= 0 && curr >= tgt
 }
