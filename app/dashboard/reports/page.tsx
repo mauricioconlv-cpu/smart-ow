@@ -14,6 +14,7 @@ export default function ReportsPage() {
 
   const [services, setServices]     = useState<any[]>([])
   const [clients, setClients]       = useState<any[]>([])
+  const [company, setCompany]       = useState<{ name: string; logo_url: string | null } | null>(null)
   const [loading, setLoading]       = useState(false)
   const [searched, setSearched]     = useState(false)
   const [queryError, setQueryError] = useState('')
@@ -24,11 +25,22 @@ export default function ReportsPage() {
   const [dateFrom, setDateFrom]       = useState('')
   const [dateTo, setDateTo]           = useState('')
 
-  // Cargar lista de clientes una vez
+  // Cargar lista de clientes + company del usuario autenticado
   useEffect(() => {
     supabase.from('clients').select('id, name').order('name').then(({ data, error }) => {
       if (error) console.error('clients error:', error)
       if (data) setClients(data)
+    })
+
+    // Cargar company para el logo del PDF
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (!user) return
+      supabase.from('profiles').select('company_id').eq('id', user.id).single().then(({ data: prof }) => {
+        if (!prof?.company_id) return
+        supabase.from('companies').select('name, logo_url').eq('id', prof.company_id).single().then(({ data: co }) => {
+          if (co) setCompany(co)
+        })
+      })
     })
   }, [])
 
@@ -44,11 +56,14 @@ export default function ReportsPage() {
       .from('services')
       .select(`
         id, folio, status, costo_calculado, calidad_estrellas,
-        firma_url, tipo_servicio, created_at, updated_at,
-        numero_expediente, insurance_folio,
-        origen_coords, destino_coords,
+        firma_url, tipo_servicio, tipo_asistencia, tiempo_espera,
+        calidad_operador, nombre_cliente_firma, comentarios_calidad,
+        created_at, updated_at, numero_expediente, insurance_folio,
+        origen_coords, destino_coords, origen_address, destino_address,
+        distancia_km, marca_vehiculo, modelo_vehiculo, anio_vehiculo,
+        placas_vehiculo, color_vehiculo,
         clients ( name ),
-        profiles ( full_name )
+        profiles ( full_name, grua_asignada )
       `)
       .in('status', CLOSED_STATUSES)
       .order('updated_at', { ascending: false })
@@ -246,7 +261,11 @@ export default function ReportsPage() {
                     <span className="text-xl font-bold text-green-600">
                       ${Number(service.costo_calculado || 0).toLocaleString('es-MX', {minimumFractionDigits: 2})} MXN
                     </span>
-                    <DownloadPDFButton service={service} />
+                    <DownloadPDFButton
+                      service={service}
+                      companyLogoUrl={company?.logo_url}
+                      companyName={company?.name}
+                    />
                   </div>
                 </div>
               </li>
