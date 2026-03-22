@@ -59,8 +59,8 @@ export default function ReportsPage() {
         firma_url, tipo_servicio, tipo_asistencia, tiempo_espera,
         calidad_operador, nombre_cliente_firma, comentarios_calidad,
         created_at, updated_at, numero_expediente, insurance_folio,
-        origen_coords, destino_coords, origen_address, destino_address,
-        distancia_km, marca_vehiculo, modelo_vehiculo, anio_vehiculo,
+        origen_coords, destino_coords, distancia_km,
+        marca_vehiculo, modelo_vehiculo, anio_vehiculo,
         placas_vehiculo, color_vehiculo,
         clients ( name ),
         profiles ( full_name, grua_asignada )
