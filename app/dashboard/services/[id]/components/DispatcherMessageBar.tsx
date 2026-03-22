@@ -9,19 +9,21 @@ interface DispatcherMessageBarProps {
 }
 
 export default function DispatcherMessageBar({ serviceId }: DispatcherMessageBarProps) {
-  const [text, setText]       = useState('')
+  const [text,    setText]    = useState('')
   const [sending, setSending] = useState(false)
-  const [sent, setSent]       = useState(false)
+  const [sent,    setSent]    = useState(false)
+  const [errMsg,  setErrMsg]  = useState('')
   const supabase = createClient()
 
   const handleSend = async () => {
     const msg = text.trim()
     if (!msg || sending) return
     setSending(true)
+    setErrMsg('')
     try {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) throw new Error('No autenticado')
-      await supabase.from('service_logs').insert({
+      const { error } = await supabase.from('service_logs').insert({
         service_id:  serviceId,
         created_by:  user.id,
         type:        'dispatcher_note',
@@ -29,11 +31,13 @@ export default function DispatcherMessageBar({ serviceId }: DispatcherMessageBar
         actor_role:  'dispatcher',
         event_label: '💬 Cabina — mensaje al operador',
       })
+      if (error) throw error
       setText('')
       setSent(true)
-      setTimeout(() => setSent(false), 2000)
+      setTimeout(() => setSent(false), 2500)
     } catch (e: any) {
-      console.error('[DispatcherMessageBar]', e.message)
+      console.error('[DispatcherMessageBar]', e)
+      setErrMsg(e?.message ?? 'Error al enviar')
     } finally {
       setSending(false)
     }
@@ -68,7 +72,8 @@ export default function DispatcherMessageBar({ serviceId }: DispatcherMessageBar
           onClick={handleSend}
           disabled={!text.trim() || sending}
           style={{
-            padding: '9px 16px', borderRadius: 8, border: 'none', cursor: !text.trim() || sending ? 'not-allowed' : 'pointer',
+            padding: '9px 16px', borderRadius: 8, border: 'none',
+            cursor: !text.trim() || sending ? 'not-allowed' : 'pointer',
             background: sent
               ? 'linear-gradient(135deg,#16a34a,#15803d)'
               : 'linear-gradient(135deg,#2563eb,#1d4ed8)',
@@ -86,6 +91,11 @@ export default function DispatcherMessageBar({ serviceId }: DispatcherMessageBar
       {sent && (
         <p style={{ margin: 0, fontSize: 11, color: '#4ade80', fontWeight: 600 }}>
           ✓ Mensaje enviado al operador
+        </p>
+      )}
+      {errMsg && (
+        <p style={{ margin: 0, fontSize: 11, color: '#f87171', fontWeight: 600 }}>
+          ⚠️ {errMsg}
         </p>
       )}
     </div>
