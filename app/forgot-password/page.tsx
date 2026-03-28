@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, Suspense } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import {
   Truck, Mail, Phone, ArrowLeft, CheckCircle2, AlertTriangle,
@@ -11,7 +11,7 @@ import { useSearchParams } from 'next/navigation'
 
 export const dynamic = 'force-dynamic'
 
-export default function ForgotPasswordPage() {
+function ForgotPasswordContent() {
   const searchParams = useSearchParams()
   // Si viene desde el login con ?tipo=operador, ir directo al flujo de empleado
   const tipoInicial = searchParams.get('tipo') === 'operador' ? 'employee' : 'choose'
@@ -374,5 +374,18 @@ export default function ForgotPasswordPage() {
         </div>
       </div>
     </div>
+  )
+}
+
+export default function ForgotPasswordPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen flex items-center justify-center"
+           style={{ background: 'linear-gradient(135deg, #060b18 0%, #0d1530 50%, #0a0f20 100%)' }}>
+        <div className="w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+      </div>
+    }>
+      <ForgotPasswordContent />
+    </Suspense>
   )
 }
