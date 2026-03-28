@@ -1,18 +1,32 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { Truck, Mail, Phone, ArrowLeft, CheckCircle2, AlertTriangle, Loader2, KeyRound, ShieldAlert } from 'lucide-react'
+import {
+  Truck, Mail, Phone, ArrowLeft, CheckCircle2, AlertTriangle,
+  Loader2, KeyRound, ShieldAlert, Send, MessageSquare
+} from 'lucide-react'
 import Link from 'next/link'
+import { useSearchParams } from 'next/navigation'
 
 export const dynamic = 'force-dynamic'
 
 export default function ForgotPasswordPage() {
-  const [mode, setMode] = useState<'choose' | 'superadmin' | 'employee'>('choose')
+  const searchParams = useSearchParams()
+  // Si viene desde el login con ?tipo=operador, ir directo al flujo de empleado
+  const tipoInicial = searchParams.get('tipo') === 'operador' ? 'employee' : 'choose'
+
+  const [mode, setMode] = useState<'choose' | 'superadmin' | 'employee'>(tipoInicial as any)
   const [email, setEmail] = useState('')
   const [isSending, setIsSending] = useState(false)
   const [sent, setSent] = useState(false)
   const [error, setError] = useState('')
+
+  // Employee flow state
+  const [phone, setPhone] = useState('')
+  const [requestSent, setRequestSent] = useState(false)
+  const [requestMsg, setRequestMsg] = useState('')
+  const [employeeName, setEmployeeName] = useState('')
 
   async function handleSuperAdminReset(e: React.FormEvent) {
     e.preventDefault()
@@ -30,6 +44,35 @@ export default function ForgotPasswordPage() {
       return
     }
     setSent(true)
+  }
+
+  async function handleEmployeeRequest(e: React.FormEvent) {
+    e.preventDefault()
+    setIsSending(true)
+    setError('')
+
+    try {
+      const res = await fetch('/api/password-requests/public', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone: phone.trim().replace(/\D/g, '') }),
+      })
+      const data = await res.json()
+
+      if (!res.ok || data.error) {
+        setError(data.error || 'Error inesperado. Intenta de nuevo.')
+        setIsSending(false)
+        return
+      }
+
+      setRequestMsg(data.message)
+      if (data.employeeName) setEmployeeName(data.employeeName)
+      setRequestSent(true)
+    } catch {
+      setError('Error de conexión. Verifica tu internet e intenta de nuevo.')
+    } finally {
+      setIsSending(false)
+    }
   }
 
   return (
@@ -57,7 +100,9 @@ export default function ForgotPasswordPage() {
             Volver al login
           </Link>
 
-          {/* CHOOSE MODE */}
+          {/* ══════════════════════════════════════════════════════════════
+              CHOOSE MODE
+          ══════════════════════════════════════════════════════════════ */}
           {mode === 'choose' && (
             <div className="space-y-6">
               <div>
@@ -90,14 +135,16 @@ export default function ForgotPasswordPage() {
                   </div>
                   <div>
                     <p className="font-semibold text-white">Soy Empleado / Operador</p>
-                    <p className="text-xs text-slate-400">Inicia sesión por teléfono</p>
+                    <p className="text-xs text-slate-400">Solicita acceso a tu administrador</p>
                   </div>
                 </button>
               </div>
             </div>
           )}
 
-          {/* SUPERADMIN FLOW */}
+          {/* ══════════════════════════════════════════════════════════════
+              SUPERADMIN FLOW
+          ══════════════════════════════════════════════════════════════ */}
           {mode === 'superadmin' && !sent && (
             <form onSubmit={handleSuperAdminReset} className="space-y-6">
               <div>
@@ -148,7 +195,7 @@ export default function ForgotPasswordPage() {
             </form>
           )}
 
-          {/* SUCCESS */}
+          {/* SUCCESS SuperAdmin */}
           {mode === 'superadmin' && sent && (
             <div className="text-center space-y-4 py-4">
               <div className="w-16 h-16 rounded-full bg-green-500/15 border border-green-500/30 flex items-center justify-center mx-auto">
@@ -165,33 +212,163 @@ export default function ForgotPasswordPage() {
             </div>
           )}
 
-          {/* EMPLOYEE FLOW */}
-          {mode === 'employee' && (
-            <div className="space-y-5">
+          {/* ══════════════════════════════════════════════════════════════
+              EMPLOYEE / OPERATOR FLOW
+          ══════════════════════════════════════════════════════════════ */}
+          {mode === 'employee' && !requestSent && (
+            <form onSubmit={handleEmployeeRequest} className="space-y-5">
               <div>
-                <h1 className="text-2xl font-bold text-white">Recuperación de Contraseña</h1>
-                <p className="text-slate-400 text-sm mt-1">Empleados y operadores</p>
+                <h1 className="text-2xl font-bold text-white">¿Olvidaste tu contraseña?</h1>
+                <p className="text-slate-400 text-sm mt-1">
+                  Ingresa tu número de teléfono registrado y notificaremos a tu administrador para que te ayude.
+                </p>
               </div>
 
-              <div className="bg-orange-500/10 border border-orange-500/20 rounded-xl p-5 space-y-3">
-                <div className="flex items-center gap-2">
-                  <ShieldAlert className="w-5 h-5 text-orange-400 flex-shrink-0" />
-                  <p className="text-orange-300 font-semibold text-sm">Contacta a tu Administrador</p>
+              {error && (
+                <div className="flex items-center gap-2 text-red-400 text-sm bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-3">
+                  <AlertTriangle className="w-4 h-4 flex-shrink-0" />
+                  {error}
                 </div>
-                <p className="text-slate-400 text-sm leading-relaxed">
-                  Por seguridad, el restablecimiento de contraseñas de empleados y operadores
-                  lo realiza el <strong className="text-white">Administrador o SuperAdmin</strong> de tu empresa.
-                </p>
-                <p className="text-slate-400 text-sm">
-                  Si ya iniciaste sesión antes, también puedes ir a{' '}
-                  <strong className="text-blue-400">Configuración → Seguridad</strong>{' '}
-                  para solicitar el cambio desde dentro del sistema.
+              )}
+
+              {/* Info box */}
+              <div
+                style={{
+                  background: 'rgba(249,115,22,0.08)',
+                  border: '1px solid rgba(249,115,22,0.20)',
+                  borderRadius: 12,
+                  padding: '14px 16px',
+                  display: 'flex',
+                  gap: 12,
+                  alignItems: 'flex-start',
+                }}
+              >
+                <ShieldAlert className="w-5 h-5 text-orange-400 flex-shrink-0 mt-0.5" />
+                <p className="text-slate-300 text-xs leading-relaxed">
+                  Por seguridad, el restablecimiento de contraseñas lo realiza el{' '}
+                  <strong className="text-white">Administrador</strong> de tu empresa.
+                  Al enviar tu solicitud, el admin recibirá una alerta y podrá ayudarte.
                 </p>
               </div>
+
+              {/* Teléfono */}
+              <div>
+                <label className="block text-sm font-medium text-slate-300 mb-2">
+                  Tu número de teléfono
+                </label>
+                <div className="relative">
+                  <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
+                  <input
+                    type="tel"
+                    value={phone}
+                    onChange={e => { setPhone(e.target.value); setError('') }}
+                    required
+                    placeholder="Ej. 5512345678"
+                    maxLength={15}
+                    style={{
+                      display: 'block',
+                      width: '100%',
+                      boxSizing: 'border-box',
+                      paddingLeft: 40,
+                      paddingRight: 16,
+                      paddingTop: 12,
+                      paddingBottom: 12,
+                      background: 'rgba(255,255,255,0.07)',
+                      border: '1px solid rgba(255,255,255,0.15)',
+                      borderRadius: 10,
+                      color: 'white',
+                      fontSize: 15,
+                      outline: 'none',
+                    }}
+                    className="focus:ring-2 focus:ring-orange-500/50"
+                  />
+                </div>
+                <p className="text-xs text-slate-500 mt-1">
+                  Debe coincidir con el número registrado en el sistema
+                </p>
+              </div>
+
+              {/* Botón solicitar */}
+              <button
+                type="submit"
+                disabled={isSending || phone.replace(/\D/g, '').length < 10}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 8,
+                  width: '100%',
+                  padding: '13px 20px',
+                  borderRadius: 10,
+                  border: 'none',
+                  fontWeight: 700,
+                  fontSize: 14,
+                  color: 'white',
+                  background: isSending || phone.replace(/\D/g, '').length < 10
+                    ? 'rgba(249,115,22,0.4)'
+                    : 'linear-gradient(135deg, #f97316, #d97706)',
+                  cursor: isSending || phone.replace(/\D/g, '').length < 10 ? 'not-allowed' : 'pointer',
+                  boxShadow: '0 8px 20px rgba(249,115,22,0.25)',
+                  transition: 'all 0.2s',
+                }}
+              >
+                {isSending
+                  ? <><Loader2 className="w-4 h-4" style={{ animation: 'spin 1s linear infinite' }} /> Enviando solicitud...</>
+                  : <><Send className="w-4 h-4" /> Solicitar Acceso</>
+                }
+              </button>
 
               <button type="button" onClick={() => setMode('choose')} className="w-full text-center text-xs text-slate-500 hover:text-slate-300 transition-colors">
                 ← Volver a opciones
               </button>
+            </form>
+          )}
+
+          {/* SUCCESS Employee */}
+          {mode === 'employee' && requestSent && (
+            <div className="text-center space-y-5 py-4">
+              <div
+                className="w-20 h-20 rounded-full flex items-center justify-center mx-auto"
+                style={{
+                  background: 'rgba(249,115,22,0.12)',
+                  border: '2px solid rgba(249,115,22,0.30)',
+                  boxShadow: '0 0 30px rgba(249,115,22,0.15)',
+                }}
+              >
+                <MessageSquare className="w-9 h-9 text-orange-400" />
+              </div>
+
+              <div>
+                <h2 className="text-xl font-bold text-white">¡Solicitud Enviada!</h2>
+                {employeeName && (
+                  <p className="text-orange-300 font-medium mt-1">{employeeName}</p>
+                )}
+              </div>
+
+              <div
+                style={{
+                  background: 'rgba(255,255,255,0.04)',
+                  border: '1px solid rgba(255,255,255,0.08)',
+                  borderRadius: 12,
+                  padding: '16px',
+                }}
+              >
+                <p className="text-slate-300 text-sm leading-relaxed">
+                  {requestMsg || 'Tu administrador ha sido notificado y te contactará para restablecer tu contraseña.'}
+                </p>
+              </div>
+
+              <p className="text-xs text-slate-500">
+                Si no recibes respuesta pronto, comunícate directamente con tu despachador o administrador.
+              </p>
+
+              <Link
+                href="/login"
+                className="inline-flex items-center gap-2 text-sm text-blue-400 hover:text-blue-300 transition-colors"
+              >
+                <ArrowLeft className="w-4 h-4" />
+                Volver al inicio de sesión
+              </Link>
             </div>
           )}
         </div>

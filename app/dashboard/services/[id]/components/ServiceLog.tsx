@@ -4,7 +4,7 @@ import { useState, useEffect, useTransition } from 'react'
 import { createBrowserClient } from '@supabase/ssr'
 import { addManualNote } from '../capture/actions'
 import {
-  Lock, Truck, RefreshCw, FileText, Send, Loader2, AlertCircle, Mic, Mailbox, MessageSquare
+  Lock, Truck, RefreshCw, FileText, Send, Loader2, AlertCircle, Mic, Mailbox, MessageSquare, Camera
 } from 'lucide-react'
 
 const supabase = createBrowserClient(
@@ -21,6 +21,7 @@ const TYPE_CONFIG: Record<string, { label: string; color: string; bg: string; em
   voice_note:       { label: 'Audio Operador',       color: 'text-purple-600',  bg: 'bg-purple-50 border-purple-200', emoji: '🎙️' },
   operator_note:    { label: 'Mensaje Operador',     color: 'text-emerald-600', bg: 'bg-emerald-50 border-emerald-200', emoji: '💬' },
   dispatcher_note:  { label: 'Mensaje Cabina',       color: 'text-blue-600',    bg: 'bg-blue-50   border-blue-200',  emoji: '📱' },
+  photo_evidence:   { label: 'Evidencia Fotográfica', color: 'text-amber-600',  bg: 'bg-amber-50  border-amber-200', emoji: '📷' },
 }
 
 interface LogEntry {
@@ -141,6 +142,7 @@ export default function ServiceLog({ serviceId, canAddNotes }: ServiceLogProps) 
           const isAudio      = log.type === 'audio_ptt'
           const isVoicemail  = log.type === 'voicemail_ptt'
           const hasAudio     = (isVoiceNote || isAudio || isVoicemail) && log.resource_url
+          const isPhotoEvidence = log.type === 'photo_evidence' && log.resource_url
 
           return (
             <div key={log.id} className={`flex gap-3 p-3 rounded-lg border ${cfg.bg}`}>
@@ -177,6 +179,20 @@ export default function ServiceLog({ serviceId, canAddNotes }: ServiceLogProps) 
                       <source src={log.resource_url!} type="audio/mp4" />
                       Tu navegador no soporta audio.
                     </audio>
+                  </div>
+                )}
+
+                {/* Foto de evidencia del operador */}
+                {isPhotoEvidence && (
+                  <div className="mt-2">
+                    <a href={log.resource_url!} target="_blank" rel="noreferrer" className="block">
+                      <img
+                        src={log.resource_url!}
+                        alt="Evidencia fotográfica"
+                        className="rounded-lg border border-amber-200 max-h-48 object-cover w-full cursor-zoom-in hover:opacity-90 transition"
+                      />
+                    </a>
+                    <p className="text-[10px] text-amber-600 font-semibold mt-1">📷 Toca para ver en tamaño completo</p>
                   </div>
                 )}
 

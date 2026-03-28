@@ -1,15 +1,15 @@
-'use client'
-
 import { login } from './actions'
-import { Truck, Phone, Lock } from 'lucide-react'
+import { Truck, Phone, Lock, AlertTriangle } from 'lucide-react'
 import Link from 'next/link'
 
-export default function LoginPage({
+// Server Component — necesario para leer searchParams correctamente en App Router
+export default async function LoginPage({
   searchParams,
 }: {
-  searchParams: { message?: string }
+  searchParams: Promise<{ message?: string }>
 }) {
-  const message = searchParams?.message
+  const params = await searchParams
+  const message = params?.message ? decodeURIComponent(params.message) : null
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-slate-900 via-blue-950 to-slate-900 px-4 py-12 sm:px-6 lg:px-8">
@@ -31,9 +31,11 @@ export default function LoginPage({
         {/* Card del formulario */}
         <div className="bg-white/10 backdrop-blur-md border border-white/20 rounded-2xl shadow-xl p-8">
 
+          {/* Banner de error — visible cuando hay ?message= en la URL */}
           {message && (
-            <div className="mb-6 bg-red-500/20 border border-red-400/40 text-red-200 px-4 py-3 rounded-lg text-sm text-center">
-              ⚠️ {decodeURIComponent(message)}
+            <div className="mb-6 flex items-center gap-3 bg-red-500/20 border border-red-400/40 text-red-200 px-4 py-3 rounded-xl text-sm">
+              <AlertTriangle className="h-4 w-4 flex-shrink-0 text-red-400" />
+              <span>{message}</span>
             </div>
           )}
 
@@ -89,13 +91,13 @@ export default function LoginPage({
               Iniciar Sesión
             </button>
 
-            {/* Olvidé mi contraseña */}
+            {/* ¿Problemas para entrar? */}
             <div className="text-center">
               <Link
-                href="/forgot-password"
-                className="text-sm text-slate-400 hover:text-blue-400 transition-colors"
+                href="/forgot-password?tipo=operador"
+                className="text-sm text-slate-400 hover:text-orange-400 transition-colors"
               >
-                ¿Olvidaste tu contraseña?
+                ¿Problemas para ingresar? Solicitar acceso →
               </Link>
             </div>
           </form>

@@ -11,6 +11,7 @@ import {
 import { unlockWithReason, closeService } from './actions'
 import ServiceLog from '../components/ServiceLog'
 import DispatcherMessageBar from '../components/DispatcherMessageBar'
+import EvidencePhotosPanel from '../components/EvidencePhotosPanel'
 
 const supabase = createBrowserClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -1001,6 +1002,11 @@ export default function ServiceCapturePage() {
         </div>
       </div>
 
+      {/* ── Evidencias Fotográficas del Operador ─────────────── */}
+      {hasData && (
+        <EvidencePhotosPanel serviceId={id} />
+      )}
+
       {/* ── Bitácora del Expediente ─────────────────────────── */}
       {hasData && (
         <div className="max-w-4xl mx-auto mt-2 mb-28 space-y-4">
@@ -1008,6 +1014,7 @@ export default function ServiceCapturePage() {
           <ServiceLog serviceId={id} canAddNotes={true} />
         </div>
       )}
+
 
       {/* ── Modal de desbloqueo ───────────────────────────────── */}
       {showUnlockModal && (
