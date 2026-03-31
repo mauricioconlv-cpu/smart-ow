@@ -221,12 +221,36 @@ export default function NewServicePage() {
         .eq('tow_truck_id', selectedTruck)
         .single()
 
+      // ── Para servicios particulares: obtener o crear un cliente genérico ──
+      let clientIdToInsert = isParticular ? null : selectedClient
+      if (isParticular) {
+        // Buscar cliente 'Particular' de la empresa
+        const { data: partClient } = await supabase
+          .from('clients')
+          .select('id')
+          .eq('company_id', profile.company_id)
+          .ilike('name', 'particular')
+          .maybeSingle()
+
+        if (partClient) {
+          clientIdToInsert = partClient.id
+        } else {
+          // Crear cliente genérico 'Particular' si no existe
+          const { data: newClient } = await supabase
+            .from('clients')
+            .insert({ name: 'Particular', company_id: profile.company_id })
+            .select('id')
+            .single()
+          clientIdToInsert = newClient?.id ?? null
+        }
+      }
+
       // PASO 1: INSERT con solo columnas ORIGINAL conocidas por PostgREST
       const { data: newService, error: serviceError } = await supabase
         .from('services')
         .insert({
           company_id:    profile.company_id,
-          client_id:     isParticular ? null : selectedClient,
+          client_id:     clientIdToInsert,
           operator_id:   operatorProfile?.id ?? null,
           tipo_servicio: tipoServicio,
           distancia_km:  distanciaAproximada,
@@ -261,10 +285,9 @@ export default function NewServicePage() {
           event_label: `🚚 Asignación Inicial`,
           actor_role: 'admin',
         })
-        window.location.href = `/dashboard/services/${newService.id}/tracking`
-      } else {
-        window.location.href = `/dashboard/services/${newService.id}/capture`
       }
+      // Siempre ir a Captura de Servicio para completar los datos del cliente/vehículo
+      window.location.href = `/dashboard/services/${newService.id}/capture`
     } catch (err: any) {
       setCreateError(err.message || 'Error desconocido.')
       setIsCreating(false)
