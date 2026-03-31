@@ -441,6 +441,7 @@ export default function ServiceCapturePage() {
         origin_references:    originReferences   || null,
         destination_type:     destinationType    || null,
         travels_inventory:    travelsInventory,
+        viaja_bajo_inventario: travelsInventory === true,
         destination_receiver: destinationReceiver || null,
         dest_state:           destState,
         dest_municipality:    destMunicipality,

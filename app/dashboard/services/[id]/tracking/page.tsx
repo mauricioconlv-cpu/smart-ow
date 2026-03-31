@@ -11,6 +11,7 @@ import {
 } from 'lucide-react'
 import ServiceLog from '../components/ServiceLog'
 import DispatcherMessageBar from '../components/DispatcherMessageBar'
+import InventoryPanel from '../components/InventoryPanel'
 
 const supabase = createBrowserClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -69,6 +70,7 @@ export default function TrackingPage() {
   const [errorMsg, setErrorMsg] = useState('')
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null)
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const [inventoryItems, setInventoryItems] = useState<any[]>([])
 
   const fetchData = async () => {
     try {
@@ -108,6 +110,16 @@ export default function TrackingPage() {
             }
           }
         }
+      }
+      // Cargar ítems de inventario si el servicio es bajo inventario
+      if (svc.viaja_bajo_inventario && svc.company_id) {
+        const { data: items } = await supabase
+          .from('inventory_items')
+          .select('id, seccion, label, orden')
+          .eq('company_id', svc.company_id)
+          .eq('activo', true)
+          .order('seccion').order('orden')
+        if (items) setInventoryItems(items)
       }
       setLastRefresh(new Date())
     } catch (e: any) {
@@ -354,6 +366,11 @@ export default function TrackingPage() {
           <InfoField label="Costo Calculado" value={service.costo_calculado != null ? `$${Number(service.costo_calculado).toLocaleString('es-MX', { minimumFractionDigits: 2 })}` : null} />
         </div>
       </div>
+
+      {/* ── Panel de Inventario (solo si viaja_bajo_inventario) ── */}
+      {service.viaja_bajo_inventario && (
+        <InventoryPanel service={service} inventoryItems={inventoryItems} />
+      )}
 
       {/* ── Dispatcher Message Bar ── */}
       <DispatcherMessageBar serviceId={id} />
