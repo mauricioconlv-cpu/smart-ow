@@ -270,8 +270,8 @@ export default function LiveMonitorPage() {
     }
   }
 
-  const onlineOps  = operators.filter(o => !!o.grua_asignada)
-  const offlineOps = operators.filter(o => !o.grua_asignada)
+  const onlineOps  = operators.filter(o => o.duty_status !== 'offline' && !!o.tow_truck_id)
+  const offlineOps = operators.filter(o => o.duty_status === 'offline' || !o.tow_truck_id)
 
   return (
     <div className="flex flex-col h-[calc(100vh-6rem)] gap-4">
