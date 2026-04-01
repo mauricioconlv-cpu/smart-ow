@@ -60,8 +60,13 @@ export default function ReportsPage() {
         numero_expediente, insurance_folio, origen_coords, destino_coords,
         tipo_asistencia, tiempo_espera, calidad_operador,
         nombre_cliente_firma, comentarios_calidad,
+        vehicle_brand, vehicle_type, vehicle_year, vehicle_plates, vehicle_color,
+        service_reason, assistance_type, distancia_km, ruta_km, es_foraneo,
+        captura_iniciada_at, captura_finalizada_at, operador_asignado_at, 
+        contacto_at, traslado_inicio_at, llegada_destino_at, fin_servicio_at,
+        cancelacion_motivo,
         clients ( name ),
-        profiles ( full_name )
+        profiles ( full_name, grua_asignada )
       `)
       .in('status', CLOSED_STATUSES)
       .order('updated_at', { ascending: false })

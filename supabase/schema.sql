@@ -127,7 +127,7 @@ create type service_status as enum (
 
 create table public.services (
   id uuid default uuid_generate_v4() primary key,
-  folio serial not null,
+  folio integer not null,
   company_id uuid references public.companies(id) on delete cascade not null,
   status service_status default 'creado'::service_status not null,
   client_id uuid references public.clients(id) not null,
@@ -148,7 +148,8 @@ create table public.services (
   firma_url text, 
   
   created_at timestamp with time zone default timezone('utc'::text, now()) not null,
-  updated_at timestamp with time zone default timezone('utc'::text, now()) not null
+  updated_at timestamp with time zone default timezone('utc'::text, now()) not null,
+  UNIQUE (company_id, folio)
 );
 
 alter table public.services enable row level security;
@@ -184,3 +185,28 @@ create policy "Tenancy policy for service logs" on public.service_logs
   for all using (
     company_id = (select company_id from public.profiles where id = auth.uid())
   );
+
+-- 6. Trigger para generar folio por empresa (Tenant) en los Servicios
+CREATE OR REPLACE FUNCTION set_company_folio()
+RETURNS trigger AS $$
+DECLARE
+  next_folio integer;
+BEGIN
+  -- Bloqueamos la fila de la empresa para evitar condiciones de carrera
+  PERFORM 1 FROM public.companies WHERE id = NEW.company_id FOR UPDATE;
+
+  -- Obtenemos el folio máximo de la empresa, o empezamos en 1 si no hay (0+1)
+  SELECT COALESCE(MAX(folio), 0) + 1 INTO next_folio
+  FROM public.services
+  WHERE company_id = NEW.company_id;
+  
+  NEW.folio := next_folio;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS trg_set_company_folio ON public.services;
+CREATE TRIGGER trg_set_company_folio
+BEFORE INSERT ON public.services
+FOR EACH ROW
+EXECUTE FUNCTION set_company_folio();
