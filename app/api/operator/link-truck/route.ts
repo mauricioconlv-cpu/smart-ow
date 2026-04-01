@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createClient as createServiceClient } from '@supabase/supabase-js'
+import { logClockIn, logClockOut } from '@/lib/attendance'
 
 function createAdminClient() {
   return createServiceClient(
@@ -82,6 +83,9 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Error al vincular grúa: ' + profileErr.message }, { status: 500 })
     }
 
+    // Registrar Entrada en el módulo de Asistencia / Nómina
+    await logClockIn(adminClient, user.id)
+
     return NextResponse.json({
       success: true,
       truck: {
@@ -109,6 +113,9 @@ export async function DELETE() {
       .from('profiles')
       .update({ tow_truck_id: null, grua_asignada: null })
       .eq('id', user.id)
+
+    // Registrar Salida (Overtime) en el módulo de Asistencia / Nómina
+    await logClockOut(adminClient, user.id)
 
     return NextResponse.json({ success: true })
   } catch (err: any) {

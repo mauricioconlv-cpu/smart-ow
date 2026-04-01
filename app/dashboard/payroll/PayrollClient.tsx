@@ -2,7 +2,7 @@
 
 import { useState, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { Calendar, Clock, AlertTriangle, FileText, Upload, Loader2, Users, History, CheckCircle, ShieldAlert } from 'lucide-react'
+import { Calendar, Clock, AlertTriangle, FileText, Upload, Loader2, Users, History, CheckCircle, ShieldAlert, Plus } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 
 function compressImage(file: File, maxMB: number = 1): Promise<File> {
@@ -160,7 +160,47 @@ export default function PayrollClient({
 
       {/* TABS CONTENT */}
       {activeTab === 'asistencia' && (
-        <div className="bg-white shadow rounded-xl p-0 overflow-hidden border border-slate-200">
+        <div className="space-y-6">
+          
+          <h3 className="font-bold text-lg text-slate-800 mb-2 mt-4">Desempeño Global (Días Asistidos vs Retardos)</h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {employees.map(emp => {
+              const empLogs = attendanceLogs.filter(l => l.profile?.id === emp.id || l.profile_id === emp.id)
+              const diasAsistidos = new Set(empLogs.map(l => l.log_date)).size
+              const retardos = empLogs.filter(l => l.late_minutes > 0).length
+              const totalMinsExtra = empLogs.reduce((acc, l) => acc + (l.overtime_minutes || 0), 0)
+
+              return (
+                <div key={emp.id} className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
+                  <div className="flex items-center gap-3">
+                    <img src={emp.avatar_url || 'https://via.placeholder.com/40'} className="w-10 h-10 rounded-full border border-slate-200" alt=""/>
+                    <div>
+                      <p className="font-bold text-slate-800 text-sm leading-tight">{emp.full_name}</p>
+                      <p className="text-[10px] font-black uppercase text-slate-400">{emp.role} • Ent: {emp.hora_entrada || 'N/A'}</p>
+                    </div>
+                  </div>
+                  
+                  <div className="grid grid-cols-3 gap-2 mt-4 text-center">
+                    <div className="bg-slate-50 border border-slate-100 rounded p-2">
+                       <p className="text-[10px] uppercase font-bold text-slate-400">Asistencias</p>
+                       <p className="font-bold text-blue-600 text-lg">{diasAsistidos}</p>
+                    </div>
+                    <div className="bg-slate-50 border border-slate-100 rounded p-2">
+                       <p className="text-[10px] uppercase font-bold text-slate-400">Retardos</p>
+                       <p className={`font-bold text-lg ${retardos > 0 ? 'text-rose-500' : 'text-emerald-500'}`}>{retardos}</p>
+                    </div>
+                    <div className="bg-slate-50 border border-slate-100 rounded p-2">
+                       <p className="text-[10px] uppercase font-bold text-slate-400">Extra (Hrs)</p>
+                       <p className="font-bold text-amber-600 text-lg">{(totalMinsExtra/60).toFixed(1)}</p>
+                    </div>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+
+          <h3 className="font-bold text-lg text-slate-800 mb-2 mt-6">Bitácora Detallada de Turnos</h3>
+          <div className="bg-white shadow rounded-xl p-0 overflow-hidden border border-slate-200">
            <table className="w-full text-left text-sm text-slate-600">
              <thead className="bg-slate-50 border-b border-slate-200 font-semibold text-slate-800">
                <tr>
@@ -213,6 +253,7 @@ export default function PayrollClient({
                )}
              </tbody>
            </table>
+          </div>
         </div>
       )}
 
