@@ -154,6 +154,26 @@ export default function ServicesPage() {
 
     if (!service.created_at) return { color, text, warning, message, progress, barColor }
 
+    if (service.is_scheduled && service.scheduled_at) {
+      const scheduledTime = new Date(service.scheduled_at).getTime()
+      const minsUntilAppointment = (scheduledTime - currentTime) / 60000
+
+      if (service.status === 'creado' || service.status === 'sin_operador') {
+        progress = 10
+        if (minsUntilAppointment <= 0) {
+          color = 'bg-red-100'; text = 'text-red-700'; barColor = 'bg-red-600'
+          warning = true; message = `❌ CITA RETRASADA (${Math.abs(Math.floor(minsUntilAppointment))}m)`
+        } else if (minsUntilAppointment <= 180) {
+          color = 'bg-pink-100'; text = 'text-pink-700'; barColor = 'bg-pink-500'
+          warning = true; message = `🚨 ALERTA: Asignar grúa (Faltan ${Math.floor(minsUntilAppointment/60)}h ${Math.floor(minsUntilAppointment%60)}m)`
+        } else {
+          color = 'bg-purple-100'; text = 'text-purple-700'; barColor = 'bg-purple-400'
+          message = `Cita programada (Faltan ${Math.floor(minsUntilAppointment/60)}h ${Math.floor(minsUntilAppointment%60)}m)`
+        }
+        return { color, text, warning, message, progress, barColor }
+      }
+    }
+
     const started = new Date(service.created_at).getTime()
     const elapsedMins = (currentTime - started) / 60000
 
@@ -195,6 +215,92 @@ export default function ServicesPage() {
     return { color, text, warning, message, progress, barColor }
   }
 
+  const renderServiceCard = (service: any) => {
+    const sla = calculateSLA(service)
+    const hasVoicemail = voicemailAlert[service.id]
+
+    const requiresAssignment = service.is_scheduled && (service.status === 'creado' || service.status === 'sin_operador')
+    let isPulseColor = false
+    if (requiresAssignment && service.scheduled_at) {
+      const minsToAppt = (new Date(service.scheduled_at).getTime() - currentTime) / 60000
+      if (minsToAppt <= 180) isPulseColor = true
+    }
+
+    return (
+      <Link
+        key={service.id}
+        href={`/dashboard/services/${service.id}/tracking`}
+        onClick={() => dismissAlert(service.id)}
+        className={`block bg-white border rounded-lg p-4 shadow-sm relative overflow-hidden transition-all
+          ${hasVoicemail
+            ? 'border-green-400 shadow-green-100 shadow-md'
+            : isPulseColor 
+              ? 'pulse-magenta border-pink-500 shadow-pink-200 shadow-lg'
+              : 'border-slate-200 hover:border-blue-400 hover:shadow-md'
+          }`}
+      >
+        <div className="flex flex-col md:flex-row gap-4 justify-between">
+          {/* Folio + Cliente */}
+          <div className="flex space-x-4">
+            <div className={`w-12 h-12 rounded-lg flex items-center justify-center font-black text-sm transition-colors
+              ${hasVoicemail
+                ? 'folio-voicemail-blink'
+                : 'bg-slate-100 text-slate-700 hover:bg-blue-100 hover:text-blue-700'
+              }`}>
+              #{service.folio}
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <p className="font-bold text-slate-800">{service.client?.name || 'Cliente Particular'}</p>
+                {hasVoicemail && (
+                  <span className="flex items-center gap-1 text-[10px] font-black px-2 py-0.5 rounded-full bg-green-100 text-green-700 animate-pulse">
+                    <Mailbox className="w-3 h-3" /> NUEVO AUDIO
+                  </span>
+                )}
+              </div>
+              {service.numero_expediente && (
+                <p className="text-xs text-blue-600 font-medium mt-0.5">Exp: {service.numero_expediente}</p>
+              )}
+              <div className="flex gap-2 text-xs text-slate-500 mt-1">
+                <span className="flex items-center gap-1"><Truck className="w-3 h-3"/> {service.operator?.full_name || 'SIN ASIGNAR'}</span>
+                <span>•</span>
+                <span className="uppercase font-semibold text-slate-400">{service.status.replace(/_/g, ' ')}</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Barra SLA */}
+          <div className="flex-1 flex flex-col justify-center max-w-lg w-full shrink-0">
+            <div className="flex justify-between text-xs font-bold mb-1 items-center">
+              <span className={`px-2 py-0.5 rounded flex items-center gap-1 ${sla.color} ${sla.text}`}>
+                {sla.warning && <AlertTriangle className="w-3 h-3"/>}
+                {sla.message}
+              </span>
+              <span className="text-slate-500">{sla.progress}%</span>
+            </div>
+            <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden flex">
+              <div className={`h-full ${sla.barColor} transition-all duration-1000 ease-in-out`} style={{width: `${sla.progress}%`}}></div>
+            </div>
+          </div>
+
+          {/* Acciones */}
+          <div className="flex items-center">
+            {service.status === 'sin_operador' && (
+              <span className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 text-sm font-bold rounded-lg shadow-sm">
+                Asignar Operador
+              </span>
+            )}
+            {service.status === 'en_captura' && (
+              <span className="bg-slate-900 hover:bg-black text-white px-4 py-2 text-sm font-bold rounded-lg shadow-sm">
+                Terminar Captura
+              </span>
+            )}
+          </div>
+        </div>
+      </Link>
+    )
+  }
+
   return (
     <>
       {/* Blink keyframe */}
@@ -204,6 +310,12 @@ export default function ServicesPage() {
           50%      { background:#16a34a; color:white;   transform:scale(1.08); }
         }
         .folio-voicemail-blink { animation: folioVoicemail 0.85s ease-in-out infinite; }
+
+        @keyframes pulseMagenta {
+          0%, 100% { border-color: #fbcfe8; box-shadow: 0 0 0 rgba(236,72,153,0); }
+          50% { border-color: #fce7f3; box-shadow: 0 4px 14px rgba(236,72,153,0.8); background-color: #fdf2f8; }
+        }
+        .pulse-magenta { animation: pulseMagenta 1.5s ease-in-out infinite; border-width: 2px !important; }
       `}</style>
 
       <div className="flex flex-col h-[calc(100vh-6rem)] bg-white border border-slate-200 shadow-sm rounded-xl overflow-hidden">
@@ -266,82 +378,20 @@ export default function ServicesPage() {
               {searchQuery ? `Sin resultados para "${searchQuery}"` : 'No hay servicios en este estatus.'}
             </div>
           ) : (
-            filteredServices.map(service => {
-              const sla         = calculateSLA(service)
-              const hasVoicemail = voicemailAlert[service.id]
+            <>
+              {filteredServices.filter(s => !s.is_scheduled).map(service => renderServiceCard(service))}
 
-              return (
-                <Link
-                  key={service.id}
-                  href={`/dashboard/services/${service.id}/tracking`}
-                  onClick={() => dismissAlert(service.id)}
-                  className={`block bg-white border rounded-lg p-4 shadow-sm relative overflow-hidden transition-all
-                    ${hasVoicemail
-                      ? 'border-green-400 shadow-green-100 shadow-md'
-                      : 'border-slate-200 hover:border-blue-400 hover:shadow-md'
-                    }`}
-                >
-                  <div className="flex flex-col md:flex-row gap-4 justify-between">
-                    {/* Folio + Cliente */}
-                    <div className="flex space-x-4">
-                      <div className={`w-12 h-12 rounded-lg flex items-center justify-center font-black text-sm transition-colors
-                        ${hasVoicemail
-                          ? 'folio-voicemail-blink'
-                          : 'bg-slate-100 text-slate-700 hover:bg-blue-100 hover:text-blue-700'
-                        }`}>
-                        #{service.folio}
-                      </div>
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <p className="font-bold text-slate-800">{service.client?.name || 'Cliente Particular'}</p>
-                          {hasVoicemail && (
-                            <span className="flex items-center gap-1 text-[10px] font-black px-2 py-0.5 rounded-full bg-green-100 text-green-700 animate-pulse">
-                              <Mailbox className="w-3 h-3" /> NUEVO AUDIO
-                            </span>
-                          )}
-                        </div>
-                        {service.numero_expediente && (
-                          <p className="text-xs text-blue-600 font-medium mt-0.5">Exp: {service.numero_expediente}</p>
-                        )}
-                        <div className="flex gap-2 text-xs text-slate-500 mt-1">
-                          <span className="flex items-center gap-1"><Truck className="w-3 h-3"/> {service.operator?.full_name || 'SIN ASIGNAR'}</span>
-                          <span>•</span>
-                          <span className="uppercase font-semibold text-slate-400">{service.status.replace(/_/g, ' ')}</span>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Barra SLA */}
-                    <div className="flex-1 flex flex-col justify-center max-w-lg w-full shrink-0">
-                      <div className="flex justify-between text-xs font-bold mb-1 items-center">
-                        <span className={`px-2 py-0.5 rounded flex items-center gap-1 ${sla.color} ${sla.text}`}>
-                          {sla.warning && <AlertTriangle className="w-3 h-3"/>}
-                          {sla.message}
-                        </span>
-                        <span className="text-slate-500">{sla.progress}%</span>
-                      </div>
-                      <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden flex">
-                        <div className={`h-full ${sla.barColor} transition-all duration-1000 ease-in-out`} style={{width: `${sla.progress}%`}}></div>
-                      </div>
-                    </div>
-
-                    {/* Acciones */}
-                    <div className="flex items-center">
-                      {service.status === 'sin_operador' && (
-                        <span className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 text-sm font-bold rounded-lg shadow-sm">
-                          Asignar Operador
-                        </span>
-                      )}
-                      {service.status === 'en_captura' && (
-                        <span className="bg-slate-900 hover:bg-black text-white px-4 py-2 text-sm font-bold rounded-lg shadow-sm">
-                          Terminar Captura
-                        </span>
-                      )}
-                    </div>
+              {filteredServices.some(s => s.is_scheduled) && (
+                <div className="mt-8 pt-6 border-t border-slate-200">
+                  <h3 className="text-lg font-black text-slate-800 flex items-center gap-2 mb-4">
+                    📅 Servicios con Cita Programada
+                  </h3>
+                  <div className="space-y-3">
+                    {filteredServices.filter(s => s.is_scheduled).map(service => renderServiceCard(service))}
                   </div>
-                </Link>
-              )
-            })
+                </div>
+              )}
+            </>
           )}
         </div>
       </div>

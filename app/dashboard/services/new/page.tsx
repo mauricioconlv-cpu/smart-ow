@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { createBrowserClient } from '@supabase/ssr'
-import { Plus, MapPin, Calculator, AlertCircle, Wrench, FileText, X } from 'lucide-react'
+import { Plus, MapPin, Calculator, AlertCircle, Wrench, FileText, X, Calendar } from 'lucide-react'
 
 const supabase = createBrowserClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -46,6 +46,11 @@ export default function NewServicePage() {
   const [requiereManiobra, setRequiereManiobra] = useState(false)
   const [requierePasoCorriente, setRequierePasoCorriente] = useState(false)
   const [herramientasUsadas, setHerramientasUsadas] = useState<string[]>([])
+
+  // Citas Programadas
+  const [isScheduled, setIsScheduled] = useState(false)
+  const [scheduledDate, setScheduledDate] = useState('')
+  const [scheduledTime, setScheduledTime] = useState('')
 
   // ETA del operador al origen
   const [etaMinutes, setEtaMinutes] = useState<number | null>(null)
@@ -196,7 +201,8 @@ export default function NewServicePage() {
 
   const handleCreateService = async () => {
     if (!selectedClient) { setCreateError('Selecciona una aseguradora/cliente.'); return }
-    if (!selectedTruck)  { setCreateError('Selecciona una grúa de la flotilla.'); return }
+    if (!isScheduled && !selectedTruck)  { setCreateError('Selecciona una grúa de la flotilla.'); return }
+    if (isScheduled && (!scheduledDate || !scheduledTime)) { setCreateError('Ingresa la fecha y hora de la cita programada.'); return }
 
     const costoFinal = isParticular ? (parseFloat(costoParticular) || 0) : costoCalculado
 
@@ -215,11 +221,15 @@ export default function NewServicePage() {
 
       if (!profile?.company_id) throw new Error('No se pudo obtener la empresa.')
 
-      const { data: operatorProfile } = await supabase
-        .from('profiles')
-        .select('id')
-        .eq('tow_truck_id', selectedTruck)
-        .single()
+      let operatorProfile = null
+      if (selectedTruck) {
+        const { data } = await supabase
+          .from('profiles')
+          .select('id')
+          .eq('tow_truck_id', selectedTruck)
+          .maybeSingle()
+        operatorProfile = data
+      }
 
       // ── Para servicios particulares: obtener o crear un cliente genérico ──
       let clientIdToInsert = isParticular ? null : selectedClient
@@ -246,6 +256,11 @@ export default function NewServicePage() {
       }
 
       // PASO 1: INSERT con solo columnas ORIGINAL conocidas por PostgREST
+      let scheduledAt = null
+      if (isScheduled) {
+        scheduledAt = new Date(`${scheduledDate}T${scheduledTime}:00`).toISOString()
+      }
+
       const { data: newService, error: serviceError } = await supabase
         .from('services')
         .insert({
@@ -259,6 +274,8 @@ export default function NewServicePage() {
           destino_coords: destLatLng   ? { lat: destLatLng.lat,    lng: destLatLng.lng, address: destinationAddress }    : null,
           status: operatorProfile?.id ? 'rumbo_contacto' : 'creado',
           es_particular: isParticular,
+          is_scheduled:  isScheduled,
+          scheduled_at:  scheduledAt,
         })
         .select('id')
         .single()
@@ -423,6 +440,39 @@ export default function NewServicePage() {
             </div>
           </div>
 
+          {/* Opción de Cita Programada */}
+          <div className="bg-white shadow rounded-lg p-6">
+            <h3 className="text-lg font-medium text-gray-900 mb-4 flex items-center gap-2">
+              <Calendar className="h-5 w-5 text-purple-600"/>
+              Agendar Cita Programada
+            </h3>
+            
+            <label className={`flex items-center gap-4 p-4 rounded-xl border-2 cursor-pointer transition-all
+                ${isScheduled ? 'border-purple-400 bg-purple-50' : 'border-slate-200 bg-slate-50 hover:border-purple-300'}`}>
+                <input type="checkbox" checked={isScheduled} onChange={e => setIsScheduled(e.target.checked)}
+                  className="w-5 h-5 text-purple-500 rounded"/>
+                <div>
+                  <p className="font-semibold text-slate-800">Servicio con cita / agendado</p>
+                  <p className="text-xs text-slate-500">Separará el servicio en el monitor y alertará 3h antes de la cita.</p>
+                </div>
+            </label>
+
+            {isScheduled && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4 pt-4 border-t border-purple-100">
+                <div>
+                  <label className="block text-sm font-medium text-gray-900 mb-1">Día de la Cita</label>
+                  <input type="date" value={scheduledDate} onChange={e => setScheduledDate(e.target.value)}
+                    className="mt-1 block w-full rounded-md border-0 py-2.5 px-3 text-gray-900 ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-purple-600 text-sm" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-900 mb-1">Hora (24h)</label>
+                  <input type="time" value={scheduledTime} onChange={e => setScheduledTime(e.target.value)}
+                    className="mt-1 block w-full rounded-md border-0 py-2.5 px-3 text-gray-900 ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-purple-600 text-sm" />
+                </div>
+              </div>
+            )}
+          </div>
+
           {/* Asignación de Grúa */}
           <div className="bg-white shadow rounded-lg p-6">
             <h3 className="text-lg font-medium text-gray-900 mb-4 flex items-center gap-2">
@@ -430,7 +480,9 @@ export default function NewServicePage() {
               Asignación Logística (Flotilla Activa)
             </h3>
             <div className="bg-slate-50 border border-slate-200 rounded-lg p-4 mb-4">
-                <label className="block text-sm font-medium text-gray-900 mb-1">Seleccionar Grúa Conectada</label>
+                <label className="block text-sm font-medium text-gray-900 mb-1">
+                  {isScheduled ? 'Asignar Grúa de Origen (Opcional)' : 'Seleccionar Grúa Conectada'}
+                </label>
                 <select 
                   value={selectedTruck}
                   onChange={(e) => setSelectedTruck(e.target.value)}
