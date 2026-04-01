@@ -58,6 +58,8 @@ export default function ReportsPage() {
         id, folio, status, costo_calculado, calidad_estrellas,
         firma_url, tipo_servicio, created_at, updated_at,
         numero_expediente, insurance_folio, origen_coords, destino_coords,
+        origin_street, origin_colonia, origin_municipality, origin_state,
+        dest_street, dest_colonia, dest_municipality, dest_state,
         tipo_asistencia, tiempo_espera, calidad_operador,
         nombre_cliente_firma, comentarios_calidad,
         vehicle_brand, vehicle_type, vehicle_year, vehicle_plates, vehicle_color,
