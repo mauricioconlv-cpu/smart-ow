@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { createClient as createServiceClient } from '@supabase/supabase-js'
+import { logClockIn } from '@/lib/attendance'
 
 function createAnonymousClient() {
   return createServiceClient(
@@ -43,6 +44,13 @@ export async function login(formData: FormData) {
       ? 'Contraseña incorrecta. Verifica e intenta de nuevo.'
       : authError.message
     redirect(`/login?message=${encodeURIComponent(msg)}`)
+  }
+
+  // Si login exitoso, registrar entrada del empleado en Asistencia (solo despachadores u operadores, no admin)
+  const { data: { user } } = await supabase.auth.getUser()
+  if (user) {
+    // pasamos supabase client con los permisos de autenticacion del usuario que acaba de entrar
+    await logClockIn(supabase, user.id)
   }
 
   revalidatePath('/', 'layout')

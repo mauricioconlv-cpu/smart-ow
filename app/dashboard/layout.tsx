@@ -9,6 +9,8 @@ import NavItemClient from './components/NavItemClient'
 import DashboardHeartbeat from './components/DashboardHeartbeat'
 import OperatorFreeModal from './components/OperatorFreeModal'
 import DashboardBitacoraNotifier from './components/DashboardBitacoraNotifier'
+import IdleTracker from './components/IdleTracker'
+import { logClockOut } from '@/lib/attendance'
 
 export default async function DashboardLayout({
   children,
@@ -21,7 +23,7 @@ export default async function DashboardLayout({
 
   const { data: profile } = await supabase
     .from('profiles')
-    .select('role, company_id, full_name, avatar_url')
+    .select('role, is_supervisor, company_id, full_name, avatar_url')
     .eq('id', user.id)
     .single()
 
@@ -39,6 +41,10 @@ export default async function DashboardLayout({
   const handleLogout = async () => {
     'use server'
     const supabase = await createClient()
+    const { data: authData } = await supabase.auth.getUser()
+    if (authData.user) {
+      await logClockOut(supabase, authData.user.id)
+    }
     await supabase.auth.signOut()
     redirect('/login')
   }
@@ -50,8 +56,13 @@ export default async function DashboardLayout({
     { href: '/dashboard/clients', icon: Users,     label: 'Aseguradoras' },
     { href: '/dashboard/fleet',   icon: Truck,     label: 'Flotilla de Grúas' },
     { href: '/dashboard/users',   icon: Users,     label: 'Usuarios y Empleados' },
-    { href: '/dashboard/settings',icon: Settings,  label: 'Configuración' },
   ]
+
+  if (profile?.role === 'admin' || profile?.is_supervisor) {
+    navLinks.push({ href: '/dashboard/payroll', icon: Users, label: 'Nóminas y Asistencia' })
+  }
+
+  navLinks.push({ href: '/dashboard/settings',icon: Settings,  label: 'Configuración' })
 
   return (
     <div className="flex h-screen overflow-hidden" style={{ background: 'var(--bg-base)' }}>
@@ -117,6 +128,7 @@ export default async function DashboardLayout({
       <DashboardHeartbeat />
       <OperatorFreeModal />
       <DashboardBitacoraNotifier />
+      {user && <IdleTracker userId={user.id} />}
     </div>
   )
 }
