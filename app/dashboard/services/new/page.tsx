@@ -255,8 +255,8 @@ export default function NewServicePage() {
           tipo_servicio: tipoServicio,
           distancia_km:  distanciaAproximada,
           costo_calculado: costoFinal,
-          origen_coords: originLatLng  ? { lat: originLatLng.lat,  lng: originLatLng.lng }  : null,
-          destino_coords: destLatLng   ? { lat: destLatLng.lat,    lng: destLatLng.lng }    : null,
+          origen_coords: originLatLng  ? { lat: originLatLng.lat,  lng: originLatLng.lng, address: originAddress }  : null,
+          destino_coords: destLatLng   ? { lat: destLatLng.lat,    lng: destLatLng.lng, address: destinationAddress }    : null,
           status: operatorProfile?.id ? 'rumbo_contacto' : 'creado',
           es_particular: isParticular,
         })
