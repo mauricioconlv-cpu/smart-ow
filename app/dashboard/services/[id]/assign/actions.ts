@@ -28,6 +28,7 @@ export async function assignOperator(serviceId: string, operatorId: string) {
     .update({
       operator_id: operatorId,
       status: 'rumbo_contacto',
+      assigned_at: new Date().toISOString(),
     })
     .eq('id', serviceId)
 

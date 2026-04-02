@@ -14,8 +14,13 @@ export async function updateClientWithRates(formData: FormData): Promise<void> {
   const clientName = formData.get('name') as string
   if (!clientId) return
 
-  // 1. Actualizar nombre del cliente
-  await supabase.from('clients').update({ name: clientName }).eq('id', clientId)
+  // 1. Actualizar nombre del cliente + configuración Costo Muerto
+  await supabase.from('clients').update({
+    name: clientName,
+    costo_muerto_activo:    formData.get('costo_muerto_activo') === 'on',
+    costo_muerto_umbral_min: parseInt(formData.get('costo_muerto_umbral_min') as string) || 15,
+    costo_muerto_pct:        parseFloat(formData.get('costo_muerto_pct') as string) || 25,
+  }).eq('id', clientId)
 
   // 2. Construir los costos
   const costs: Record<string, number> = {}

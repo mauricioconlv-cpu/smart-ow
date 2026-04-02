@@ -29,7 +29,7 @@ export default async function EditClientPage(props: {
 
   const { data: client } = await supabase
     .from('clients')
-    .select('id, name, pricing_rules(*)')
+    .select('id, name, pricing_rules(*), costo_muerto_activo, costo_muerto_umbral_min, costo_muerto_pct')
     .eq('id', id)
     .single()
 
@@ -135,6 +135,76 @@ export default async function EditClientPage(props: {
                   <CurrencyInput name={`costo_blindaje_${n}`} defaultValue={rule[`costo_blindaje_${n}`] ?? 0} />
                 </div>
               ))}
+            </div>
+          </div>
+        </div>
+
+
+        {/* ── Costo Muerto ─────────────────────────────────────── */}
+        <div className="bg-white shadow rounded-lg p-6 border-l-4 border-red-400">
+          <h3 className="text-lg font-semibold text-gray-900 mb-1 flex items-center gap-2">
+            ☠️ Configuración de Costo Muerto
+          </h3>
+          <p className="text-xs text-slate-500 mb-5">
+            Si el servicio es cancelado una vez que ya se asignó un operador, el sistema calculará
+            un costo muerto. Aplica cuando el tiempo transcurrido desde la asignación supera el
+            umbral configurado.
+          </p>
+
+          {/* Toggle activo */}
+          <label className="flex items-center gap-3 cursor-pointer mb-5">
+            <input
+              type="checkbox"
+              name="costo_muerto_activo"
+              defaultChecked={!!(client as any).costo_muerto_activo}
+              className="w-4 h-4 rounded accent-red-500"
+            />
+            <span className="text-sm font-semibold text-slate-700">Activar Costo Muerto para esta aseguradora</span>
+          </label>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+            {/* Umbral de tiempo */}
+            <div>
+              <label className="block text-xs font-semibold text-slate-600 mb-1">
+                Minutos de gracia (costo muerto = $0 si cancela antes)
+              </label>
+              <div className="relative">
+                <input
+                  type="number"
+                  name="costo_muerto_umbral_min"
+                  min={1} max={120} step={1}
+                  defaultValue={(client as any).costo_muerto_umbral_min ?? 15}
+                  className="block w-full rounded-md border-0 py-2 pl-3 pr-14 text-slate-900 ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-red-500 text-sm bg-white shadow-sm"
+                />
+                <span className="absolute right-3 top-2 text-slate-400 text-sm font-medium">min</span>
+              </div>
+              <p className="text-xs text-slate-400 mt-1">Ejemplo: 15 → cancela dentro de 15 min = $0</p>
+            </div>
+
+            {/* Porcentaje */}
+            <div>
+              <label className="block text-xs font-semibold text-slate-600 mb-1">
+                Porcentaje del costo total (cuando supera el umbral)
+              </label>
+              <div className="flex gap-2 mt-1">
+                {[25, 50, 75].map(pct => (
+                  <label key={pct} className="flex-1 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="costo_muerto_pct"
+                      value={pct}
+                      defaultChecked={((client as any).costo_muerto_pct ?? 25) === pct}
+                      className="sr-only peer"
+                    />
+                    <div className="text-center py-2 rounded-lg border-2 text-sm font-bold transition
+                      border-slate-200 text-slate-500 bg-white
+                      peer-checked:border-red-500 peer-checked:bg-red-50 peer-checked:text-red-700">
+                      {pct}%
+                    </div>
+                  </label>
+                ))}
+              </div>
+              <p className="text-xs text-slate-400 mt-1">% del costo original del servicio a cobrar</p>
             </div>
           </div>
         </div>

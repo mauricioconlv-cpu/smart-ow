@@ -79,11 +79,17 @@ export default function TrackingPage() {
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const [inventoryItems, setInventoryItems] = useState<any[]>([])
 
+  // ── Cancelado Posterior ─────────────────────────────────
+  const [showCancelModal, setShowCancelModal] = useState(false)
+  const [costoMuertoEditable, setCostoMuertoEditable] = useState<string>('0')
+  const [cancelNotes, setCancelNotes] = useState('')
+  const [isCancelling, setIsCancelling] = useState(false)
+
   const fetchData = async () => {
     try {
       const { data: svc, error: err } = await supabase
         .from('services')
-        .select('*, clients(name)')
+        .select('*, clients(name, costo_muerto_activo, costo_muerto_umbral_min, costo_muerto_pct)')
         .eq('id', id)
         .single()
 
@@ -390,6 +396,156 @@ export default function TrackingPage() {
 
       {/* ── Bitácora ── */}
       <ServiceLog serviceId={id} canAddNotes={true} />
+
+      {/* ── Botón Cancelado Posterior ── solo si hay operador asignado */}
+      {service.operator_id && !['cancelado_momento','cancelado_posterior','servicio_cerrado'].includes(service.status) && (
+        <div style={{ display: 'flex', justifyContent: 'center', paddingTop: 8, paddingBottom: 24 }}>
+          <button
+            onClick={() => {
+              // Pre-calcular el costo muerto
+              const client = service.clients
+              const costoOriginal = Number(service.costo_calculado ?? 0)
+              let costoMuerto = 0
+              if (client?.costo_muerto_activo && service.assigned_at) {
+                const minutosTranscurridos = Math.floor(
+                  (Date.now() - new Date(service.assigned_at).getTime()) / 60000
+                )
+                if (minutosTranscurridos > (client.costo_muerto_umbral_min ?? 15)) {
+                  costoMuerto = costoOriginal * ((client.costo_muerto_pct ?? 25) / 100)
+                }
+              }
+              setCostoMuertoEditable(costoMuerto.toFixed(2))
+              setShowCancelModal(true)
+            }}
+            style={{
+              padding: '10px 28px', background: '#dc2626', color: 'white',
+              borderRadius: 10, fontWeight: 700, fontSize: 13, border: 'none',
+              cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8,
+              boxShadow: '0 4px 12px rgba(220,38,38,0.3)'
+            }}
+          >
+            ✕ Cancelado Posterior
+          </button>
+        </div>
+      )}
+
+      {/* ── Modal Cancelado Posterior ── */}
+      {showCancelModal && (
+        <div style={{
+          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50, padding: 16
+        }}>
+          <div style={{ background: 'white', borderRadius: 16, width: '100%', maxWidth: 440, overflow: 'hidden', boxShadow: '0 20px 60px rgba(0,0,0,0.3)' }}>
+            {/* Header */}
+            <div style={{ background: '#dc2626', padding: '18px 22px', color: 'white' }}>
+              <p style={{ margin: 0, fontSize: 11, fontWeight: 700, opacity: 0.8, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Confirmar</p>
+              <p style={{ margin: 0, fontSize: 18, fontWeight: 800, marginTop: 2 }}>Cancelado Posterior</p>
+            </div>
+
+            <div style={{ padding: '20px 22px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+              {/* Tiempo transcurrido */}
+              {service.assigned_at && (() => {
+                const min = Math.floor((Date.now() - new Date(service.assigned_at).getTime()) / 60000)
+                const umbral = service.clients?.costo_muerto_umbral_min ?? 15
+                const dentroUmbral = min <= umbral
+                return (
+                  <div style={{
+                    padding: '10px 14px', borderRadius: 8,
+                    background: dentroUmbral ? '#f0fdf4' : '#fef2f2',
+                    border: `1px solid ${dentroUmbral ? '#bbf7d0' : '#fecaca'}`
+                  }}>
+                    <p style={{ margin: 0, fontSize: 12, fontWeight: 700, color: dentroUmbral ? '#15803d' : '#dc2626' }}>
+                      ⏱ Tiempo desde asignación: <strong>{min} min</strong>
+                    </p>
+                    <p style={{ margin: '4px 0 0', fontSize: 11, color: '#6b7280' }}>
+                      {dentroUmbral
+                        ? `Dentro del umbral de ${umbral} min — Costo muerto = $0`
+                        : `Excede el umbral de ${umbral} min — se aplica costo muerto`
+                      }
+                    </p>
+                  </div>
+                )
+              })()}
+
+              {/* Costo Muerto editable */}
+              <div>
+                <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#374151', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 6 }}>
+                  Costo Muerto (editable)
+                </label>
+                <div style={{ position: 'relative' }}>
+                  <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: '#6b7280', fontWeight: 600 }}>$</span>
+                  <input
+                    type="number" min="0" step="0.01"
+                    value={costoMuertoEditable}
+                    onChange={e => setCostoMuertoEditable(e.target.value)}
+                    style={{
+                      width: '100%', padding: '10px 12px 10px 24px', border: '1.5px solid #d1d5db',
+                      borderRadius: 8, fontSize: 14, fontWeight: 700, color: '#111827',
+                      outline: 'none', boxSizing: 'border-box'
+                    }}
+                  />
+                </div>
+                <p style={{ margin: '5px 0 0', fontSize: 11, color: '#9ca3af' }}>
+                  Basado en: ${Number(service.costo_calculado ?? 0).toLocaleString('es-MX', {minimumFractionDigits: 2})} &times; {service.clients?.costo_muerto_pct ?? 25}%
+                </p>
+              </div>
+
+              {/* Notas */}
+              <div>
+                <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#374151', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 6 }}>
+                  Motivo del Cancelado Posterior
+                </label>
+                <textarea
+                  rows={3} value={cancelNotes} onChange={e => setCancelNotes(e.target.value)}
+                  placeholder="Ej. El asegurado ya no requirió servicio, cancelado por la aseguradora..."
+                  style={{ width: '100%', padding: '10px 12px', border: '1.5px solid #d1d5db', borderRadius: 8, fontSize: 13, resize: 'vertical', outline: 'none', boxSizing: 'border-box' }}
+                />
+              </div>
+
+              {/* Botones */}
+              <div style={{ display: 'flex', gap: 10 }}>
+                <button
+                  onClick={() => setShowCancelModal(false)}
+                  style={{ flex: 1, padding: '10px 0', borderRadius: 8, border: '1.5px solid #e5e7eb', background: 'white', color: '#374151', fontWeight: 600, fontSize: 13, cursor: 'pointer' }}
+                >
+                  Cancelar
+                </button>
+                <button
+                  disabled={isCancelling}
+                  onClick={async () => {
+                    setIsCancelling(true)
+                    const costoFinal = parseFloat(costoMuertoEditable) || 0
+                    // 1. Actualizar servicio
+                    await supabase.from('services').update({
+                      status: 'cancelado_posterior',
+                      costo_muerto: costoFinal,
+                      costo_calculado: costoFinal,
+                    }).eq('id', id)
+                    // 2. Bitácora
+                    await supabase.from('service_logs').insert({
+                      service_id: id,
+                      type: 'status_change',
+                      event_label: '❌ Cancelado Posterior',
+                      note: `Servicio cancelado con costo muerto de $${costoFinal.toLocaleString('es-MX', {minimumFractionDigits:2})}. ${cancelNotes}`,
+                      actor_role: 'admin',
+                    })
+                    setShowCancelModal(false)
+                    setIsCancelling(false)
+                    fetchData()
+                  }}
+                  style={{
+                    flex: 1, padding: '10px 0', borderRadius: 8, border: 'none',
+                    background: isCancelling ? '#94a3b8' : '#dc2626',
+                    color: 'white', fontWeight: 700, fontSize: 13, cursor: isCancelling ? 'not-allowed' : 'pointer'
+                  }}
+                >
+                  {isCancelling ? 'Procesando...' : 'Confirmar Cancelado'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
   )
