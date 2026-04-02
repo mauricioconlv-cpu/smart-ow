@@ -519,8 +519,8 @@ export default function NewServicePage() {
                 >
                   <option value="">Buscar en mapa o seleccionar lista...</option>
                   {towTrucks.map(t => {
-                    const isMoto = t.unit_type?.toLowerCase() === 'moto'
-                    const isUtil = t.unit_type?.toLowerCase() === 'utilitario'
+                    const isMoto = t.tipo_vehiculo?.toLowerCase() === 'moto'
+                    const isUtil = t.tipo_vehiculo?.toLowerCase() === 'utilitario'
                     const prefix = isMoto ? '🏍️ Moto' : isUtil ? '🚗 Utilitario' : '🚛 Grúa'
                     
                     return (
