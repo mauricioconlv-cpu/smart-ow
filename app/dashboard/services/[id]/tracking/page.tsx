@@ -432,10 +432,10 @@ export default function TrackingPage() {
       {/* ── Modal Cancelado Posterior ── */}
       {showCancelModal && (
         <div style={{
-          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50, padding: 16
+          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999, padding: 16
         }}>
-          <div style={{ background: 'white', borderRadius: 16, width: '100%', maxWidth: 440, overflow: 'hidden', boxShadow: '0 20px 60px rgba(0,0,0,0.3)' }}>
+          <div style={{ background: 'white', borderRadius: 16, width: '100%', maxWidth: 440, overflow: 'hidden', boxShadow: '0 20px 60px rgba(0,0,0,0.4)', position: 'relative', zIndex: 10000 }}>
             {/* Header */}
             <div style={{ background: '#dc2626', padding: '18px 22px', color: 'white' }}>
               <p style={{ margin: 0, fontSize: 11, fontWeight: 700, opacity: 0.8, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Confirmar</p>
