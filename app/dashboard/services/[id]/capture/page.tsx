@@ -253,6 +253,14 @@ export default function ServiceCapturePage() {
   const [destCrossStreets,  setDestCrossStreets]   = useState('')
   const [destReferences,    setDestReferences]     = useState('')
 
+  // ── Asistencia Específica ──
+  const [birloSeguridad,    setBirloSeguridad]    = useState<boolean|null>(null)
+  const [llantaRefaccion,   setLlantaRefaccion]   = useState<boolean|null>(null)
+  const [asistenciaObs,     setAsistenciaObs]     = useState('')
+  const [tipoCombustible,   setTipoCombustible]   = useState<'magna'|'premium'|'diesel'|''>('')
+  const [litros,            setLitros]            = useState<number|1>({} as any) // handled naturally
+  const [pagoCombustible,   setPagoCombustible]   = useState<'usuario'|'cliente'|''>('')
+
   // ── Cargar servicio ─────────────────────────────────────────
   useEffect(() => {
     async function load() {
@@ -316,6 +324,13 @@ export default function ServiceCapturePage() {
       setDestStreet(data.dest_street || '')
       setDestCrossStreets(data.dest_cross_streets || '')
       setDestReferences(data.dest_references || '')
+
+      setBirloSeguridad(data.asistencia_birlo_seguridad ?? null)
+      setLlantaRefaccion(data.asistencia_llanta_refaccion ?? null)
+      setAsistenciaObs(data.asistencia_observaciones || '')
+      setTipoCombustible(data.asistencia_tipo_combustible || '')
+      setLitros(data.asistencia_litros ?? null)
+      setPagoCombustible(data.asistencia_pago_combustible || '')
 
       // Auto-geocode origen solo si no hay datos guardados
       if (!data.origin_state) {
@@ -449,6 +464,12 @@ export default function ServiceCapturePage() {
         dest_street:          destStreet,
         dest_cross_streets:   destCrossStreets || null,
         dest_references:      destReferences   || null,
+        asistencia_birlo_seguridad: birloSeguridad,
+        asistencia_llanta_refaccion: llantaRefaccion,
+        asistencia_observaciones: asistenciaObs || null,
+        asistencia_tipo_combustible: tipoCombustible || null,
+        asistencia_litros: litros,
+        asistencia_pago_combustible: pagoCombustible || null,
       }).eq('id', id)
 
       if (error) throw new Error(error.message)
@@ -720,6 +741,61 @@ export default function ServiceCapturePage() {
             )}
           </div>
         )}
+
+        {/* CUESTIONARIO ESPECÍFICO ASISTENCIA */}
+        {service?.categoria_servicio === 'cambio_llanta' && (
+          <div className="mt-5 space-y-4 pl-4 border-l-4 border-indigo-400">
+            <h4 className="font-bold text-xs text-indigo-600 uppercase tracking-wide">Detalles de Cambio de Llanta</h4>
+            <YesNo label="¿Cuenta con birlo de seguridad?" value={birloSeguridad} onChange={setBirloSeguridad} readOnly={ro} />
+            <YesNo label="¿Cuenta con llanta de refacción (En buen estado)?" value={llantaRefaccion} onChange={setLlantaRefaccion} readOnly={ro} />
+            <Field label="Observaciones">
+              {ro ? <ReadValue value={asistenciaObs} />
+                : <textarea className={inputCls} rows={2} value={asistenciaObs} onChange={e => setAsistenciaObs(e.target.value)} placeholder="Ej: La llanta a cambiar es la trasera derecha..." />
+              }
+            </Field>
+          </div>
+        )}
+
+        {service?.categoria_servicio === 'gasolina' && (
+          <div className="mt-5 space-y-4 pl-4 border-l-4 border-pink-400">
+            <h4 className="font-bold text-xs text-pink-600 uppercase tracking-wide">Detalles Suministro de Combustible</h4>
+            
+            <Field label="Tipo de Combustible">
+              {ro ? <ReadValue value={tipoCombustible === 'magna' ? '🟢 Magna' : tipoCombustible === 'premium' ? '🔴 Premium' : tipoCombustible === 'diesel' ? '⚫ Diesel' : null} />
+                : <div className="flex gap-2 mt-1">
+                    {([['magna','🟢 Magna'],['premium','🔴 Premium'],['diesel','⚫ Diesel']] as const).map(([v,l]) => (
+                      <button key={v} type="button" onClick={() => setTipoCombustible(v)}
+                        className={`flex-1 py-2.5 rounded-lg text-sm font-semibold border-2 transition ${tipoCombustible === v ? 'bg-pink-600 text-white border-pink-600' : 'bg-white text-slate-600 border-slate-200'}`}>
+                        {l}
+                      </button>
+                    ))}
+                  </div>
+              }
+            </Field>
+
+            <Field label="¿Cuántos Litros Requiere?">
+              {ro ? <ReadValue value={litros ? `${litros} Lts` : null} />
+                : <select className={selectCls} value={litros || ''} onChange={e => setLitros(parseInt(e.target.value))}>
+                    <option value="">Selecciona Lts...</option>
+                    {[1,2,3,4,5,6,7,8,9,10].map(n => <option key={n} value={n}>{n} Litro{n>1?'s':''}</option>)}
+                  </select>
+              }
+            </Field>
+
+            <Field label="Cargo del Combustible">
+              {ro ? <ReadValue value={pagoCombustible === 'usuario' ? '👤 A cargo del Usuario' : pagoCombustible === 'cliente' ? '🏢 A cargo del Cliente / Aseguradora' : null} />
+                : <div className="flex gap-2 flex-col sm:flex-row mt-1">
+                    {([['usuario','👤 A cargo del Usuario (Sitio)'],['cliente','🏢 A cargo del Cliente / Aseguradora']] as const).map(([v,l]) => (
+                      <button key={v} type="button" onClick={() => setPagoCombustible(v)}
+                        className={`flex-1 py-2.5 px-3 rounded-lg text-sm font-semibold border-2 transition ${pagoCombustible === v ? 'bg-slate-800 text-white border-slate-800' : 'bg-white text-slate-600 border-slate-200'}`}>
+                        {l}
+                      </button>
+                    ))}
+                  </div>
+              }
+            </Field>
+          </div>
+        )}
       </div>
 
       {/* ── 3. Vehículo ──────────────────────────────────── */}
@@ -882,74 +958,7 @@ export default function ServiceCapturePage() {
         </div>
       </div>
 
-      {/* ── 6. Destino del Vehículo ──────────────────────── */}
-      <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
-        <SectionHeader icon={Package} title="Destino del Vehículo" color="text-purple-600" />
-        <div className="space-y-4">
-          <Field label="¿A dónde se Traslada el Vehículo?">
-            {ro ? <ReadValue value={destinationType === 'agencia' ? '🏪 Agencia' : destinationType === 'taller' ? '🔩 Taller' : destinationType === 'domicilio' ? '🏠 Domicilio' : null} />
-              : <div className="flex gap-3 mt-1">
-                  {([['agencia','🏪 Agencia'],['taller','🔩 Taller'],['domicilio','🏠 Domicilio']] as const).map(([v,l]) => (
-                    <button key={v} type="button" onClick={() => setDestinationType(v)}
-                      className={`flex-1 py-2.5 rounded-xl text-sm font-bold border-2 transition ${destinationType === v ? 'bg-purple-600 text-white border-purple-600' : 'bg-white text-slate-600 border-slate-200 hover:border-purple-300'}`}>
-                      {l}
-                    </button>
-                  ))}
-                </div>
-            }
-          </Field>
-          <YesNo label="¿El Vehículo Viaja Bajo Inventario?" value={travelsInventory} onChange={setTravelsInventory} readOnly={ro} />
-          {travelsInventory === true && (
-            <div className="pl-4 border-l-4 border-purple-200">
-              <Field label="¿Quién Recibe en el Destino?">
-                {ro ? <ReadValue value={destinationReceiver} />
-                  : <input className={inputCls} value={destinationReceiver} onChange={e => setDestinationReceiver(e.target.value)} placeholder="Nombre y cargo de quien recibe" />
-                }
-              </Field>
-            </div>
-          )}
-        </div>
-      </div>
 
-      {/* ── 7. Ubicación Destino ─────────────────────────── */}
-      <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
-        <SectionHeader icon={MapPin} title="Ubicación de Destino" color="text-rose-600" />
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <Field label="Estado">
-            {ro ? <ReadValue value={destState} />
-              : <select className={selectCls} value={destState} onChange={e => setDestState(e.target.value)}>
-                  <option value="">Seleccionar estado</option>
-                  {ESTADOS.map(s => <option key={s} value={s}>{s}</option>)}
-                </select>
-            }
-          </Field>
-          <Field label="Municipio / Alcaldía">
-            {ro ? <ReadValue value={destMunicipality} />
-              : <input className={inputCls} value={destMunicipality} onChange={e => setDestMunicipality(e.target.value)} placeholder="Auto-completado con coordenadas" />
-            }
-          </Field>
-          <Field label="Colonia">
-            {ro ? <ReadValue value={destColonia} />
-              : <input className={inputCls} value={destColonia} onChange={e => setDestColonia(e.target.value)} placeholder="Auto-completado con coordenadas" />
-            }
-          </Field>
-          <Field label="Calle / Avenida">
-            {ro ? <ReadValue value={destStreet} />
-              : <input className={inputCls} value={destStreet} onChange={e => setDestStreet(e.target.value)} placeholder="Auto-completado con coordenadas" />
-            }
-          </Field>
-          <Field label="Entre Calles">
-            {ro ? <ReadValue value={destCrossStreets} />
-              : <input className={inputCls} value={destCrossStreets} onChange={e => setDestCrossStreets(e.target.value)} placeholder="Ej. Entre Insurgentes y Reforma" />
-            }
-          </Field>
-          <Field label="Referencias Visuales">
-            {ro ? <ReadValue value={destReferences} />
-              : <input className={inputCls} value={destReferences} onChange={e => setDestReferences(e.target.value)} placeholder="Ej. Agencia con logotipo rojo" />
-            }
-          </Field>
-        </div>
-      </div>
 
       {/* ── Error ──────────────────────────────────────────── */}
       {saveErr && (
