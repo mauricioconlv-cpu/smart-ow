@@ -24,6 +24,7 @@ export default function NewServicePage() {
   const [selectedClient, setSelectedClient] = useState('')
   const [originAddress, setOriginAddress] = useState('')
   const [destinationAddress, setDestinationAddress] = useState('')
+  const [categoriaServicio, setCategoriaServicio] = useState<'arrastre' | 'paso_corriente' | 'cambio_llanta' | 'gasolina'>('arrastre')
   const [tipoServicio, setTipoServicio] = useState<'local' | 'foraneo'>('local')
   const [distanciaAproximada, setDistanciaAproximada] = useState(0)
   const [costoCalculado, setCostoCalculado] = useState(0)
@@ -267,11 +268,12 @@ export default function NewServicePage() {
           company_id:    profile.company_id,
           client_id:     clientIdToInsert,
           operator_id:   operatorProfile?.id ?? null,
+          categoria_servicio: categoriaServicio,
           tipo_servicio: tipoServicio,
           distancia_km:  distanciaAproximada,
           costo_calculado: costoFinal,
           origen_coords: originLatLng  ? { lat: originLatLng.lat,  lng: originLatLng.lng, address: originAddress }  : null,
-          destino_coords: destLatLng   ? { lat: destLatLng.lat,    lng: destLatLng.lng, address: destinationAddress }    : null,
+          destino_coords: destLatLng && categoriaServicio === 'arrastre' ? { lat: destLatLng.lat,    lng: destLatLng.lng, address: destinationAddress }    : null,
           status: operatorProfile?.id ? 'rumbo_contacto' : 'creado',
           es_particular: isParticular,
           is_scheduled:  isScheduled,
@@ -312,8 +314,8 @@ export default function NewServicePage() {
   }
 
   const calculateRealDistance = async () => {
-     if (!originAddress || !destinationAddress) {
-        setCalcError('Debes ingresar una dirección de Origen y de Destino.')
+     if (!originAddress || (categoriaServicio === 'arrastre' && !destinationAddress)) {
+        setCalcError('Debes ingresar ' + (categoriaServicio === 'arrastre' ? 'Origen y Destino.' : 'la dirección del Siniestro.'))
         return
      }
      setIsCalculating(true)
@@ -330,19 +332,31 @@ export default function NewServicePage() {
        }
 
        const originCoords = await geocode(originAddress)
-       const destCoords = await geocode(destinationAddress)
+       let destCoords: any = null
+       if (categoriaServicio === 'arrastre') {
+         destCoords = await geocode(destinationAddress)
+       }
        setOriginLatLng(originCoords)
        setDestLatLng(destCoords)
 
        const truckHasGPS = truck && truck.current_lat && truck.current_lng
 
        let coordsString: string
-       if (truckHasGPS) {
-         // Ruta completa: Grúa → Origen → Destino
-         coordsString = `${truck.current_lng},${truck.current_lat};${originCoords.lng},${originCoords.lat};${destCoords.lng},${destCoords.lat}`
+       if (categoriaServicio === 'arrastre') {
+           if (truckHasGPS) {
+             coordsString = `${truck.current_lng},${truck.current_lat};${originCoords.lng},${originCoords.lat};${destCoords.lng},${destCoords.lat}`
+           } else {
+             coordsString = `${originCoords.lng},${originCoords.lat};${destCoords.lng},${destCoords.lat}`
+           }
        } else {
-         // Ruta parcial: solo Origen → Destino
-         coordsString = `${originCoords.lng},${originCoords.lat};${destCoords.lng},${destCoords.lat}`
+           if (truckHasGPS) {
+             coordsString = `${truck.current_lng},${truck.current_lat};${originCoords.lng},${originCoords.lat}`
+           } else {
+             // Si no hay GPS y no hay destino, no hay ruta a calcular por OSRM (Distancia 0)
+             setDistanciaAproximada(0)
+             setIsCalculating(false)
+             return
+           }
        }
 
        const osrmRes = await fetch(`https://router.project-osrm.org/route/v1/driving/${coordsString}?overview=false`)
@@ -417,14 +431,27 @@ export default function NewServicePage() {
                 )}
               </div>
               <div>
+                <label className="block text-sm font-medium text-gray-900 mb-1">Categoría de Servicio</label>
+                <select 
+                  value={categoriaServicio}
+                  onChange={(e) => setCategoriaServicio(e.target.value as any)}
+                  className="mt-1 block w-full rounded-md border-0 py-2.5 pl-3 pr-10 text-gray-900 ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-blue-600 text-sm font-semibold"
+                >
+                  <option value="arrastre">Grúa / Arrastre Regular</option>
+                  <option value="paso_corriente">Asistencia: Paso de Corriente</option>
+                  <option value="cambio_llanta">Asistencia: Cambio de Llanta</option>
+                  <option value="gasolina">Asistencia: Suministro de Gasolina</option>
+                </select>
+              </div>
+              <div>
                 <label className="block text-sm font-medium text-gray-900 mb-1">Tipo de Tabulador</label>
                 <select 
                   value={tipoServicio}
                   onChange={(e) => setTipoServicio(e.target.value as any)}
                   className="mt-1 block w-full rounded-md border-0 py-2.5 pl-3 pr-10 text-gray-900 ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-blue-600 text-sm"
                 >
-                  <option value="local">Traslado Local</option>
-                  <option value="foraneo">Traslado Foráneo (Pago x Km)</option>
+                  <option value="local">Tarifa Local / Fija</option>
+                  <option value="foraneo">Foráneo (Bande + Pago x Km)</option>
                 </select>
               </div>
               <div className="sm:col-span-2">
@@ -538,7 +565,7 @@ export default function NewServicePage() {
 
             <h3 className="text-lg font-medium text-gray-900 mb-4 flex items-center gap-2">
               <MapPin className="h-5 w-5 text-red-500"/>
-              Ubicaciones de Arrastre
+              {categoriaServicio === 'arrastre' ? 'Ubicaciones de Arrastre' : 'Ubicación de Asistencia'}
             </h3>
             
             <div className="space-y-4">
@@ -548,16 +575,20 @@ export default function NewServicePage() {
                   placeholder="Ej. Calle Madero 15 Centro"
                   className="mt-2 block w-full rounded-md border-0 py-2.5 px-3 text-gray-900 ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-blue-600 text-sm"/>
               </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-900">Dirección de Destino (Corralón/Taller)</label>
-                <input type="text" value={destinationAddress} onChange={e => setDestinationAddress(e.target.value)}
-                  placeholder="Ej. Taller Mecánico Los Primos, Toluca"
-                  className="mt-2 block w-full rounded-md border-0 py-2.5 px-3 text-gray-900 ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-blue-600 text-sm"/>
-              </div>
+
+              {categoriaServicio === 'arrastre' && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-900">Dirección de Destino (Corralón/Taller)</label>
+                  <input type="text" value={destinationAddress} onChange={e => setDestinationAddress(e.target.value)}
+                    placeholder="Ej. Taller Mecánico Los Primos, Toluca"
+                    className="mt-2 block w-full rounded-md border-0 py-2.5 px-3 text-gray-900 ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-blue-600 text-sm"/>
+                </div>
+              )}
+
               <div className="pt-4 border-t border-slate-100 flex flex-col items-start gap-3">
                  <button type="button" disabled={isCalculating} onClick={calculateRealDistance}
                     className="bg-slate-800 text-white px-5 py-2.5 rounded-lg text-sm font-medium hover:bg-black transition-colors disabled:opacity-50">
-                    {isCalculating ? 'Geocodificando y Trazando Ruta...' : 'Calcular Ruta Asfáltica (Grúa → Siniestro → Taller)'}
+                    {isCalculating ? 'Geocodificando y Trazando Ruta...' : (categoriaServicio === 'arrastre' ? 'Calcular Ruta Asfáltica (Grúa → Siniestro → Taller)' : 'Calcular Ruta Asfáltica (Unidad → Siniestro)')}
                  </button>
                  {calcError && <p className="text-red-600 text-sm font-medium">{calcError}</p>}
               </div>
