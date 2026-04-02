@@ -62,6 +62,7 @@ interface OperatorCard {
   distanceKm: number | null
   etaMin: number | null
   routeLoaded: boolean
+  isPreSelected: boolean
 }
 
 // ── Component ────────────────────────────────────────────────
@@ -82,11 +83,14 @@ export default function AssignPage() {
       // 1. Carga el servicio
       const { data: svc } = await supabase
         .from('services')
-        .select('id, folio, origen_coords, clients(name)')
+        .select('id, folio, origen_coords, tow_truck_id, clients(name)')
         .eq('id', id)
         .single()
       if (!svc) { setLoading(false); return }
       setService(svc)
+
+      // Si el servicio ya tiene una grua pre-seleccionada, pre-seleccionaremos ese operador
+      const preSelectedTruckId = svc.tow_truck_id
 
       // 2. Carga operadores que tienen grúa asignada
       const { data: profiles } = await supabase
@@ -125,9 +129,15 @@ export default function AssignPage() {
             distanceKm: null,
             etaMin: null,
             routeLoaded: false,
+            isPreSelected: preSelectedTruckId ? truck.id === preSelectedTruckId : false,
           }
         })
-        .sort((a, b) => (a.currentLat ? 0 : 1) - (b.currentLat ? 0 : 1)) // con GPS primero
+        .sort((a, b) => {
+          // Pre-seleccionado primero, luego por GPS
+          if (a.isPreSelected) return -1
+          if (b.isPreSelected) return 1
+          return (a.currentLat ? 0 : 1) - (b.currentLat ? 0 : 1)
+        })
 
       setOperators(cards)
       setLoading(false)
@@ -256,7 +266,8 @@ export default function AssignPage() {
           </p>
 
           {operators.map((op, idx) => {
-            const isFirst = idx === 0 && op.distanceKm !== null
+            const isFirst    = idx === 0 && op.distanceKm !== null && !op.isPreSelected
+            const isPreSel   = op.isPreSelected
             const isAssigning = assigning === op.operatorId
             const hasGps = op.currentLat !== null
 
@@ -264,10 +275,16 @@ export default function AssignPage() {
               <div
                 key={op.operatorId}
                 className={`relative bg-white rounded-2xl border shadow-sm overflow-hidden transition-all ${
-                  isFirst ? 'border-blue-300 ring-1 ring-blue-200' : 'border-slate-200'
+                  isPreSel ? 'border-green-400 ring-2 ring-green-200' : isFirst ? 'border-blue-300 ring-1 ring-blue-200' : 'border-slate-200'
                 }`}
               >
-                {/* Badge "más cercano" */}
+                {/* Badge pre-seleccionada */}
+                {isPreSel && (
+                  <div className="absolute top-0 right-0 bg-green-600 text-white text-[10px] font-bold px-3 py-1 rounded-bl-xl flex items-center gap-1">
+                    <CheckCircle2 className="w-3 h-3" /> SELECCIONADA EN DESPACHO
+                  </div>
+                )}
+                {/* Badge más cercano */}
                 {isFirst && (
                   <div className="absolute top-0 right-0 bg-blue-600 text-white text-[10px] font-bold px-3 py-1 rounded-bl-xl flex items-center gap-1">
                     <Zap className="w-3 h-3" /> MÁS CERCANO

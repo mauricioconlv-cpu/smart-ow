@@ -224,15 +224,8 @@ export default function NewServicePage() {
 
       if (!profile?.company_id) throw new Error('No se pudo obtener la empresa.')
 
-      let operatorProfile = null
-      if (selectedTruck) {
-        const { data } = await supabase
-          .from('profiles')
-          .select('id')
-          .eq('tow_truck_id', selectedTruck)
-          .maybeSingle()
-        operatorProfile = data
-      }
+      // ── Ya no buscamos el operador aquí — se asigna desde /assign ──
+      // Solo guardamos qué grúa fue pre-seleccionada
 
       // ── Para servicios particulares: obtener o crear un cliente genérico ──
       let clientIdToInsert = isParticular ? null : selectedClient
@@ -269,14 +262,15 @@ export default function NewServicePage() {
         .insert({
           company_id:    profile.company_id,
           client_id:     clientIdToInsert,
-          operator_id:   operatorProfile?.id ?? null,
+          operator_id:   null,                // Se asigna después, desde /assign
+          tow_truck_id:  selectedTruck || null, // Pre-selección para la pantalla de asignación
           categoria_servicio: categoriaServicio,
           tipo_servicio: tipoServicio,
           distancia_km:  distanciaAproximada,
           costo_calculado: costoFinal,
           origen_coords: originLatLng  ? { lat: originLatLng.lat,  lng: originLatLng.lng, address: originAddress }  : null,
           destino_coords: destLatLng && categoriaServicio === 'arrastre' ? { lat: destLatLng.lat,    lng: destLatLng.lng, address: destinationAddress }    : null,
-          status: operatorProfile?.id ? 'rumbo_contacto' : 'creado',
+          status: 'sin_operador',             // Siempre empieza sin operador asignado
           es_particular: isParticular,
           is_scheduled:  isScheduled,
           scheduled_at:  scheduledAt,
@@ -295,19 +289,17 @@ export default function NewServicePage() {
         costo_desglose:         costoDesglose,
       }).eq('id', newService.id)
 
-      // PASO 3: Log en Bitácora si se asignó operador
-      if (operatorProfile?.id) {
-        await supabase.from('service_logs').insert({
-          service_id: newService.id,
-          company_id: profile.company_id,
-          created_by: user.id,
-          type: 'assignment',
-          note: `Grúa asignada exitosamente al crear servicio. Operador notificado.`,
-          event_label: `🚚 Asignación Inicial`,
-          actor_role: 'admin',
-        })
-      }
-      // Siempre ir a Captura de Servicio para completar los datos del cliente/vehículo
+      // PASO 3: Log en Bitácora del nuevo servicio
+      await supabase.from('service_logs').insert({
+        service_id: newService.id,
+        company_id: profile.company_id,
+        created_by: user.id,
+        type: 'note',
+        note: `Servicio creado. Grua pre-seleccionada: ${selectedTruck ? 'Sí' : 'Ninguna'}. Pendiente de captura y asignación.`,
+        event_label: `📝 Servicio Creado`,
+        actor_role: 'admin',
+      })
+      // Navegar a Captura para completar los datos del cliente/vehículo
       window.location.href = `/dashboard/services/${newService.id}/capture`
     } catch (err: any) {
       setCreateError(err.message || 'Error desconocido.')
