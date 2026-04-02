@@ -13,8 +13,22 @@ export async function logClockIn(supabase: SupabaseClient, userId: string) {
     // So if profile.role === 'admin', skip logging.
     if (profile.role === 'admin') return
 
-    // Adjust for today's local date (Mexico time format or generic local ISO)
-    const today = new Date().toLocaleDateString('en-CA') // YYYY-MM-DD local
+    // Obtener la fecha y hora LOCALES de México independientemente de la zona del servidor
+    const MX_TZ = 'America/Mexico_City'
+    const nowDate = new Date()
+    const mxParts = new Intl.DateTimeFormat('es-MX', {
+      timeZone: MX_TZ,
+      year: 'numeric', month: '2-digit', day: '2-digit',
+      hour: '2-digit', minute: '2-digit', hour12: false,
+    }).formatToParts(nowDate)
+
+    const getPart = (type: string) =>
+      parseInt(mxParts.find(p => p.type === type)?.value ?? '0', 10)
+
+    const mxYear   = mxParts.find(p => p.type === 'year')?.value   ?? '2000'
+    const mxMonth  = mxParts.find(p => p.type === 'month')?.value  ?? '01'
+    const mxDay    = mxParts.find(p => p.type === 'day')?.value    ?? '01'
+    const today = `${mxYear}-${mxMonth}-${mxDay}` // YYYY-MM-DD en horario México
 
     const { data: existingLog } = await supabase
       .from('attendance_logs')
@@ -29,17 +43,22 @@ export async function logClockIn(supabase: SupabaseClient, userId: string) {
       return
     }
 
+    // Capturar el momento exacto del clock-in
+    const clockInISO = nowDate.toISOString()
+
     let lateMinutes = 0
     if (profile.hora_entrada) {
-      const now = new Date()
       const [h, m] = profile.hora_entrada.split(':').map(Number)
-      
-      const expectedTime = new Date()
-      expectedTime.setHours(h, m, 0, 0)
-      
-      const diffMs = now.getTime() - expectedTime.getTime()
-      if (diffMs > 0) {
-        lateMinutes = Math.floor(diffMs / 60000)
+
+      // Hora local en México (funciona correctamente en servidores UTC como Vercel)
+      const clockInHour = getPart('hour')
+      const clockInMin  = getPart('minute')
+      const clockInTotalMins = clockInHour * 60 + clockInMin
+      const expectedTotalMins = h * 60 + m
+
+      const diffMins = clockInTotalMins - expectedTotalMins
+      if (diffMins > 0) {
+        lateMinutes = diffMins
       }
     }
 
@@ -47,7 +66,7 @@ export async function logClockIn(supabase: SupabaseClient, userId: string) {
       profile_id: userId,
       company_id: profile.company_id,
       log_date: today,
-      clock_in_time: new Date().toISOString(),
+      clock_in_time: clockInISO,
       late_minutes: lateMinutes,
       break_status: 'active'
     })

@@ -76,6 +76,8 @@ export async function POST(req: NextRequest) {
       .update({
         tow_truck_id: truck.id,
         grua_asignada: grua_label,
+        duty_status: 'active',
+        duty_status_since: new Date().toISOString(),
       })
       .eq('id', user.id)
 
@@ -111,7 +113,7 @@ export async function DELETE() {
     const adminClient = createAdminClient()
     await adminClient
       .from('profiles')
-      .update({ tow_truck_id: null, grua_asignada: null })
+      .update({ tow_truck_id: null, grua_asignada: null, duty_status: 'offline', duty_status_since: new Date().toISOString() })
       .eq('id', user.id)
 
     // Registrar Salida (Overtime) en el módulo de Asistencia / Nómina
