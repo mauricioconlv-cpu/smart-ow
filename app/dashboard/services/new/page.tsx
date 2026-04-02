@@ -57,6 +57,8 @@ export default function NewServicePage() {
   const [etaMinutes, setEtaMinutes] = useState<number | null>(null)
   const [distTruckToOrigin, setDistTruckToOrigin] = useState<number | null>(null)
 
+  const [allTrucks, setAllTrucks] = useState<any[]>([]) // raw list, unsorted
+
   useEffect(() => {
     async function loadData() {
       // Obtener empresa del usuario actual
@@ -77,16 +79,35 @@ export default function NewServicePage() {
         .eq('company_id', companyId)
       if (cData) setClients(cData)
 
-      // Filtrar grúas por empresa del usuario
+      // 1. Cargar todas las grúas activas de la empresa
       const { data: tData } = await supabase
         .from('tow_trucks')
         .select('*')
         .eq('is_active', true)
         .eq('company_id', companyId)
-      if (tData) setTowTrucks(tData)
+
+      if (!tData) return
+
+      // 2. Obtener grúas ocupadas (asignadas a un servicio activo)
+      const ACTIVE_STATUSES = ['rumbo_contacto','arribo_origen','contacto_usuario','contacto','inicio_traslado']
+      const { data: activeServices } = await supabase
+        .from('services')
+        .select('tow_truck_id')
+        .in('status', ACTIVE_STATUSES)
+        .eq('company_id', companyId)
+        .not('tow_truck_id', 'is', null)
+
+      const busyTruckIds = new Set((activeServices ?? []).map((s: any) => s.tow_truck_id))
+
+      // 3. Filtrar solo las libres
+      const freeTrucks = tData.filter(t => !busyTruckIds.has(t.id))
+
+      setAllTrucks(freeTrucks)
+      setTowTrucks(freeTrucks) // se reordena cuando haya origen
     }
     loadData()
   }, [])
+
 
 
   const toggleHerramienta = (val: string) => {
@@ -103,6 +124,27 @@ export default function NewServicePage() {
     const a = Math.sin(dLat/2)**2 + Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLng/2)**2
     return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a))
   }
+
+  // Reordenar grúas libres por distancia al origen cuando cambia el origen geocodificado
+  useEffect(() => {
+    if (!originLatLng || allTrucks.length === 0) return
+    const sorted = [...allTrucks].sort((a, b) => {
+      const aLat = a.current_lat ?? a.current_location?.lat
+      const aLng = a.current_lng ?? a.current_location?.lng
+      const bLat = b.current_lat ?? b.current_location?.lat
+      const bLng = b.current_lng ?? b.current_location?.lng
+      const hasA = aLat && aLng
+      const hasB = bLat && bLng
+      if (!hasA && !hasB) return 0
+      if (!hasA) return 1   // sin GPS al final
+      if (!hasB) return -1
+      const distA = haversineKm(aLat, aLng, originLatLng.lat, originLatLng.lng)
+      const distB = haversineKm(bLat, bLng, originLatLng.lat, originLatLng.lng)
+      return distA - distB
+    })
+    setTowTrucks(sorted)
+  }, [originLatLng, allTrucks]) // eslint-disable-line react-hooks/exhaustive-deps
+
 
   // Recalcular ETA cada vez que cambia la grúa o el origen geocodificado
   useEffect(() => {
@@ -509,16 +551,33 @@ export default function NewServicePage() {
                   onChange={(e) => setSelectedTruck(e.target.value)}
                   className="mt-1 block w-full rounded-md border-0 py-2.5 pl-3 pr-10 text-gray-900 ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-blue-600 text-sm"
                 >
-                  <option value="">Buscar en mapa o seleccionar lista...</option>
-                  {towTrucks.map(t => {
+                  <option value="">
+                    {towTrucks.length === 0 ? '⚠️ Sin grúas disponibles en este momento' : 'Seleccionar grúa disponible...'}
+                  </option>
+                  {towTrucks.map((t, idx) => {
                     const isMoto = t.tipo_vehiculo?.toLowerCase() === 'moto'
                     const isUtil = t.tipo_vehiculo?.toLowerCase() === 'utilitario'
                     const prefix = isMoto ? '🏍️ Moto' : isUtil ? '🚗 Utilitario' : '🚛 Grúa'
                     
+                    // Calcular distancia si ya hay origen geocodificado
+                    let distStr = ''
+                    if (originLatLng) {
+                      const tLat = t.current_lat ?? t.current_location?.lat
+                      const tLng = t.current_lng ?? t.current_location?.lng
+                      if (tLat && tLng) {
+                        const d = haversineKm(tLat, tLng, originLatLng.lat, originLatLng.lng)
+                        distStr = ` · ${d.toFixed(1)} km`
+                        if (idx === 0) distStr += ' ⭐ MÁS CERCANA'
+                      } else {
+                        distStr = ' · Sin GPS'
+                      }
+                    }
+
                     return (
                       <option key={t.id} value={t.id}>
                           {prefix} {t.economic_number} — {t.plates}
                           {t.unit_type && !isMoto && !isUtil ? ` [${UNIT_TYPE_LABEL[t.unit_type] || t.unit_type}]` : ''}
+                          {distStr}
                       </option>
                     )
                   })}
