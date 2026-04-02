@@ -130,6 +130,7 @@ export default function LiveMonitorPage() {
     (myProfile?.role === 'dispatcher' && (myProfile?.supervisor_level ?? 0) >= 1)
 
   const fetchPersonnel = useCallback(async () => {
+    setDbError(null)
     const { data: { user } } = await supabase.auth.getUser()
     const { data: profile } = user
       ? await supabase
@@ -140,10 +141,11 @@ export default function LiveMonitorPage() {
       : { data: null }
 
     if (profile) setMyProfile({ role: profile.role, supervisor_level: profile.supervisor_level ?? 0 })
-    const companyId = profile?.company_id
+    let companyId = profile?.company_id
+    if (companyId === 'null') companyId = null // Prevenir string "null" casteado por error
 
     // Operadores
-    const { data: ops, error: opsError } = await supabase
+    const opsQuery = supabase
       .from('profiles')
       .select(`
         id, full_name, grua_asignada, avatar_url, created_at, tow_truck_id,
@@ -151,7 +153,8 @@ export default function LiveMonitorPage() {
         tow_trucks!profiles_tow_truck_id_fkey(current_lat, current_lng, current_location)
       `)
       .eq('role', 'operator')
-      .eq('company_id', companyId)
+    if (companyId) opsQuery.eq('company_id', companyId)
+    const { data: ops, error: opsError } = await opsQuery
     if (opsError) setDbError(`Error ops: ${opsError.message}`)
     if (ops) {
       const enriched = ops.map((op: any) => {
@@ -168,21 +171,23 @@ export default function LiveMonitorPage() {
     }
 
     // Grúas
-    const { data: tw, error: twError } = await supabase
+    const twQuery = supabase
       .from('tow_trucks')
       .select('id, economic_number, unit_type, photo_url, profiles!profiles_tow_truck_id_fkey(full_name, avatar_url)')
       .eq('is_active', true)
-      .eq('company_id', companyId)
       .not('id', 'is', null)
+    if (companyId) twQuery.eq('company_id', companyId)
+    const { data: tw, error: twError } = await twQuery
     if (twError) setDbError(prev => prev ? `${prev} | Error trucks: ${twError.message}` : `Error trucks: ${twError.message}`)
     if (tw) setTrucks(tw.filter(t => Array.isArray(t.profiles) ? t.profiles.length > 0 : !!t.profiles))
 
     // Despachadores — incluir last_seen_at para detectar si están activos
-    const { data: disp } = await supabase
+    const dispQuery = supabase
       .from('profiles')
       .select('id, full_name, avatar_url, created_at, supervisor_level, last_seen_at')
       .eq('role', 'dispatcher')
-      .eq('company_id', companyId)
+    if (companyId) dispQuery.eq('company_id', companyId)
+    const { data: disp } = await dispQuery
 
     if (disp) {
       // Un despachador está "en línea" si tuvo actividad en los últimos 10 minutos
