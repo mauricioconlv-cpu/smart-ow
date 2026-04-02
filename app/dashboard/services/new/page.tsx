@@ -518,12 +518,18 @@ export default function NewServicePage() {
                   className="mt-1 block w-full rounded-md border-0 py-2.5 pl-3 pr-10 text-gray-900 ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-blue-600 text-sm"
                 >
                   <option value="">Buscar en mapa o seleccionar lista...</option>
-                  {towTrucks.map(t => (
+                  {towTrucks.map(t => {
+                    const isMoto = t.unit_type?.toLowerCase() === 'moto'
+                    const isUtil = t.unit_type?.toLowerCase() === 'utilitario'
+                    const prefix = isMoto ? '🏍️ Moto' : isUtil ? '🚗 Utilitario' : '🚛 Grúa'
+                    
+                    return (
                       <option key={t.id} value={t.id}>
-                          {t.economic_number} - {t.plates}
-                          {t.unit_type ? ` [${UNIT_TYPE_LABEL[t.unit_type] || t.unit_type}]` : ''}
+                          {prefix} {t.economic_number} — {t.plates}
+                          {t.unit_type && !isMoto && !isUtil ? ` [${UNIT_TYPE_LABEL[t.unit_type] || t.unit_type}]` : ''}
                       </option>
-                  ))}
+                    )
+                  })}
                 </select>
                 {selectedTruckData && (
                   <div className="mt-3 space-y-2">
