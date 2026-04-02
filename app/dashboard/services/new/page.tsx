@@ -778,9 +778,10 @@ export default function NewServicePage() {
       {showRatesModal && selectedClientData && (() => {
         const rule = selectedClientData.pricing_rules?.find((r: any) => r.tipo === 'general')
           ?? selectedClientData.pricing_rules?.[0]
-        const TIPOS = ['a', 'b', 'c', 'd']
+        const TIPOS = ['a', 'b', 'c', 'd', 'paso_corriente', 'cambio_llanta', 'gasolina']
         const TIPO_LABELS: Record<string, string> = {
-          a: 'Tipo A (<3.5t)', b: 'Tipo B (3.5-7.5t)', c: 'Tipo C (7.5-11t)', d: 'Tipo D (>11t)'
+          a: 'Tipo A (<3.5t)', b: 'Tipo B (3.5-7.5t)', c: 'Tipo C (7.5-11t)', d: 'Tipo D (>11t)',
+          paso_corriente: 'Paso de Corriente', cambio_llanta: 'Cambio de Llanta', gasolina: 'Gasolina'
         }
         const extras: { label: string; key: string }[] = [
           { label: 'Maniobra', key: 'costo_maniobra' },
@@ -790,6 +791,9 @@ export default function NewServicePage() {
           { label: 'Dollys', key: 'costo_dollys' },
           { label: 'Patines', key: 'costo_patines' },
           { label: 'Go Jacks', key: 'costo_go_jacks' },
+          { label: 'Pistola Impacto', key: 'costo_pistola_impacto' },
+          { label: 'Dardos', key: 'costo_dardos' },
+          { label: 'Bidón', key: 'costo_bidon' },
           { label: 'Rescate Subterráneo', key: 'costo_rescate_subterraneo' },
           { label: 'Adaptación', key: 'costo_adaptacion' },
           { label: 'Kg de Carga', key: 'costo_kg_carga' },
@@ -811,7 +815,7 @@ export default function NewServicePage() {
                   <>
                     {/* Tabla por tipo de grúa */}
                     <div>
-                      <h3 className="text-sm font-bold text-slate-700 uppercase tracking-wide mb-3">Costo por Tipo de Grúa</h3>
+                      <h3 className="text-sm font-bold text-slate-700 uppercase tracking-wide mb-3">Costo Base por Servicio / Grúa</h3>
                       <table className="w-full text-sm border-collapse">
                         <thead>
                           <tr className="bg-slate-50 text-xs text-slate-500 uppercase">

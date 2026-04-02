@@ -62,10 +62,10 @@ export default async function EditClientPage(props: {
             className="block w-full rounded-md border-0 py-2.5 px-3 text-gray-900 ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-blue-600 text-sm shadow-sm" />
         </div>
 
-        {/* Costos por Tipo de Grúa */}
+        {/* Costos por Tipo de Servicio o Unidad */}
         <div className="bg-white shadow rounded-lg p-6">
-          <h3 className="text-lg font-semibold text-gray-900 mb-1">Costo por Tipo de Grúa</h3>
-          <p className="text-xs text-slate-500 mb-4">Costo local, banderazo y precio por kilómetro para cada tipo.</p>
+          <h3 className="text-lg font-semibold text-gray-900 mb-1">Costo Base por Servicio / Grúa</h3>
+          <p className="text-xs text-slate-500 mb-4">Costo local, banderazo y precio por kilómetro para cada tipo de servicio.</p>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
@@ -78,10 +78,13 @@ export default async function EditClientPage(props: {
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {([
-                  { key: 'a', label: 'A', desc: '< 3.5 ton',   color: 'text-green-700 bg-green-100' },
-                  { key: 'b', label: 'B', desc: '3.5–7.5 ton', color: 'text-blue-700 bg-blue-100' },
-                  { key: 'c', label: 'C', desc: '7.5–11 ton',  color: 'text-orange-700 bg-orange-100' },
-                  { key: 'd', label: 'D', desc: '> 11 ton',    color: 'text-red-700 bg-red-100' },
+                  { key: 'a', label: 'Tipo A', desc: '< 3.5 ton',   color: 'text-green-700 bg-green-100' },
+                  { key: 'b', label: 'Tipo B', desc: '3.5–7.5 ton', color: 'text-blue-700 bg-blue-100' },
+                  { key: 'c', label: 'Tipo C', desc: '7.5–11 ton',  color: 'text-orange-700 bg-orange-100' },
+                  { key: 'd', label: 'Tipo D', desc: '> 11 ton',    color: 'text-red-700 bg-red-100' },
+                  { key: 'paso_corriente', label: 'Paso Corriente', desc: 'Asistencia Vial', color: 'text-yellow-700 bg-yellow-100' },
+                  { key: 'cambio_llanta',  label: 'Cambio Llanta',  desc: 'Asistencia Vial', color: 'text-slate-700 bg-slate-200' },
+                  { key: 'gasolina',       label: 'Gasolina',       desc: 'Asistencia Vial', color: 'text-purple-700 bg-purple-100' },
                 ] as const).map(({ key, label, desc, color }) => (
                   <tr key={key}>
                     <td className="py-4 pr-6">
@@ -110,6 +113,9 @@ export default async function EditClientPage(props: {
               { name: 'costo_dollys', label: 'Dollys' },
               { name: 'costo_patines', label: 'Patines' },
               { name: 'costo_go_jacks', label: 'Go Jacks' },
+              { name: 'costo_pistola_impacto', label: 'Pistola de Impacto' },
+              { name: 'costo_dardos', label: 'Dardos / Punteros' },
+              { name: 'costo_bidon', label: 'Bidón p/Gasolina' },
               { name: 'costo_rescate_subterraneo', label: 'Rescate Sub.' },
               { name: 'costo_adaptacion', label: 'Adaptación' },
               { name: 'costo_kg_carga', label: 'Kg de Carga' },
