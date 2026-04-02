@@ -14,10 +14,13 @@ const UNIT_TYPES = [
 ]
 
 const TOOLS = [
-  { value: 'dollys',   label: 'Dollys' },
-  { value: 'patines',  label: 'Patines' },
-  { value: 'jumper',   label: 'Jumper (Paso de Corriente)' },
-  { value: 'go_jacks', label: 'Go Jacks' },
+  { value: 'dollys',          label: 'Dollys' },
+  { value: 'patines',         label: 'Patines' },
+  { value: 'jumper',          label: 'Jumper (Paso de Corriente)' },
+  { value: 'go_jacks',        label: 'Go Jacks' },
+  { value: 'pistola_impacto', label: 'Pistola de Impacto' },
+  { value: 'dardos',          label: 'Dardos / Herramienta de apertura' },
+  { value: 'bidon',           label: 'Bidón p/Gasolina' },
 ]
 
 export default function NewTowTruckPage() {
