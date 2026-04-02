@@ -18,7 +18,7 @@ export default async function FleetPage() {
   // Leer la lista de grúas de la empresa
   const { data: towTrucks } = await supabase
     .from('tow_trucks')
-    .select('*')
+    .select('id, economic_number, plates, brand, model, is_active, tipo_vehiculo, unit_type, photo_url')
     .eq('company_id', companyId)
     .order('economic_number', { ascending: true })
 

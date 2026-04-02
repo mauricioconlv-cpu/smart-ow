@@ -25,8 +25,9 @@ export default function ServicesPage() {
   const fetchServices = useCallback(async () => {
     const { data } = await supabase
       .from('services')
-      .select('*, client:clients(name), operator:profiles(full_name, grua_asignada)')
+      .select('id, folio, status, created_at, is_scheduled, scheduled_at, es_foraneo, numero_expediente, insurance_folio, operator_id, categoria_servicio, client:clients(name), operator:profiles(full_name)')
       .order('created_at', { ascending: false })
+      .limit(200)   // Evitar cargar cientos de filas innecesarias
     if (data) setServices(data)
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
