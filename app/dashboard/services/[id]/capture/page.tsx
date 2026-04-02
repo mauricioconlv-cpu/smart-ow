@@ -969,6 +969,80 @@ export default function ServiceCapturePage() {
         </div>
       </div>
 
+      {/* ── Secciones Ocultas para Asistencias ──────────────────── */}
+      {isArrastre && (
+        <>
+          {/* ── 6. Destino del Vehículo ──────────────────────── */}
+          <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
+            <SectionHeader icon={Package} title="Destino del Vehículo" color="text-purple-600" />
+            <div className="space-y-4">
+              <Field label="¿A dónde se Traslada el Vehículo?">
+                {ro ? <ReadValue value={destinationType === 'agencia' ? '🏪 Agencia' : destinationType === 'taller' ? '🔩 Taller' : destinationType === 'domicilio' ? '🏠 Domicilio' : null} />
+                  : <div className="flex gap-3 mt-1">
+                      {([['agencia','🏪 Agencia'],['taller','🔩 Taller'],['domicilio','🏠 Domicilio']] as const).map(([v,l]) => (
+                        <button key={v} type="button" onClick={() => setDestinationType(v)}
+                          className={`flex-1 py-2.5 rounded-xl text-sm font-bold border-2 transition ${destinationType === v ? 'bg-purple-600 text-white border-purple-600' : 'bg-white text-slate-600 border-slate-200 hover:border-purple-300'}`}>
+                          {l}
+                        </button>
+                      ))}
+                    </div>
+                }
+              </Field>
+              <YesNo label="¿El Vehículo Viaja Bajo Inventario?" value={travelsInventory} onChange={setTravelsInventory} readOnly={ro} />
+              {travelsInventory === true && (
+                <div className="pl-4 border-l-4 border-purple-200">
+                  <Field label="¿Quién Recibe en el Destino?">
+                    {ro ? <ReadValue value={destinationReceiver} />
+                      : <input className={inputCls} value={destinationReceiver} onChange={e => setDestinationReceiver(e.target.value)} placeholder="Nombre y cargo de quien recibe" />
+                    }
+                  </Field>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* ── 7. Ubicación Destino ─────────────────────────── */}
+          <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
+            <SectionHeader icon={MapPin} title="Ubicación de Destino" color="text-rose-600" />
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <Field label="Estado">
+                {ro ? <ReadValue value={destState} />
+                  : <select className={selectCls} value={destState} onChange={e => setDestState(e.target.value)}>
+                      <option value="">Seleccionar estado</option>
+                      {ESTADOS.map(s => <option key={s} value={s}>{s}</option>)}
+                    </select>
+                }
+              </Field>
+              <Field label="Municipio / Alcaldía">
+                {ro ? <ReadValue value={destMunicipality} />
+                  : <input className={inputCls} value={destMunicipality} onChange={e => setDestMunicipality(e.target.value)} placeholder="Auto-completado con coordenadas" />
+                }
+              </Field>
+              <Field label="Colonia">
+                {ro ? <ReadValue value={destColonia} />
+                  : <input className={inputCls} value={destColonia} onChange={e => setDestColonia(e.target.value)} placeholder="Auto-completado con coordenadas" />
+                }
+              </Field>
+              <Field label="Calle / Avenida">
+                {ro ? <ReadValue value={destStreet} />
+                  : <input className={inputCls} value={destStreet} onChange={e => setDestStreet(e.target.value)} placeholder="Auto-completado con coordenadas" />
+                }
+              </Field>
+              <Field label="Entre Calles">
+                {ro ? <ReadValue value={destCrossStreets} />
+                  : <input className={inputCls} value={destCrossStreets} onChange={e => setDestCrossStreets(e.target.value)} placeholder="Ej. Entre Insurgentes y Reforma" />
+                }
+              </Field>
+              <Field label="Referencias Visuales">
+                {ro ? <ReadValue value={destReferences} />
+                  : <input className={inputCls} value={destReferences} onChange={e => setDestReferences(e.target.value)} placeholder="Ej. Agencia con logotipo rojo" />
+                }
+              </Field>
+            </div>
+          </div>
+        </>
+      )}
+
 
 
       {/* ── Error ──────────────────────────────────────────── */}
