@@ -33,6 +33,7 @@ export default function EditTowTruckPage() {
   const [errorObj, setError] = useState('')
   const [selectedTools, setSelectedTools] = useState<string[]>([])
   const [selectedType, setSelectedType] = useState('')
+  const [selectedVehicleType, setSelectedVehicleType] = useState('grua')
 
   useEffect(() => {
     async function loadTruck() {
@@ -42,6 +43,7 @@ export default function EditTowTruckPage() {
       } else {
         setTruck(data)
         setSelectedType(data.unit_type || '')
+        setSelectedVehicleType(data.tipo_vehiculo || 'grua')
         setSelectedTools(data.tools || [])
       }
       setIsLoading(false)
@@ -153,27 +155,52 @@ export default function EditTowTruckPage() {
             </div>
           </div>
 
-          {/* Tipo de Unidad */}
+          {/* Clasificación Básica (Tipo de Vehículo) */}
           <div className="space-y-4">
-            <h3 className="font-semibold text-slate-700 border-b pb-2">¿Qué tipo de unidad es?</h3>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-              {UNIT_TYPES.map(type => (
-                <label key={type.value}
-                  className={`relative flex flex-col items-center gap-1 p-4 rounded-xl border-2 cursor-pointer transition-all
-                    ${selectedType === type.value
-                      ? 'border-blue-600 bg-blue-50 text-blue-800'
-                      : 'border-slate-200 bg-slate-50 text-slate-600 hover:border-blue-300'}`}
-                >
-                  <input type="radio" name="unit_type" value={type.value}
-                    checked={selectedType === type.value}
-                    onChange={() => setSelectedType(type.value)}
-                    className="sr-only"/>
-                  <span className="text-2xl font-black">{type.value}</span>
-                  <span className="text-sm font-bold">{type.label}</span>
-                  <span className="text-xs text-center leading-tight opacity-75">{type.desc}</span>
-                </label>
-              ))}
+            <h3 className="font-semibold text-slate-700 border-b pb-2">Clasificación Básica</h3>
+            <div className="mb-6">
+              <label className="block text-sm font-medium text-slate-700 mb-2">Clase de Vehículo</label>
+              <div className="flex gap-4">
+                {[
+                  { id: 'grua', label: 'Grúa de Arrastre', icon: <Truck className="w-5 h-5 mb-1" /> },
+                  { id: 'moto', label: 'Motocicleta', icon: <span className="text-xl mb-1">🏍️</span> },
+                  { id: 'utilitario', label: 'Coche Utilitario', icon: <span className="text-xl mb-1">🚗</span> }
+                ].map(vt => (
+                  <label key={vt.id} className={`flex-1 flex flex-col items-center justify-center p-3 rounded-lg border-2 cursor-pointer transition-colors
+                    ${selectedVehicleType === vt.id ? 'border-blue-600 bg-blue-50 text-blue-800' : 'border-slate-200 bg-slate-50 text-slate-600 hover:border-blue-300'}`}>
+                    <input type="radio" name="tipo_vehiculo" value={vt.id} checked={selectedVehicleType === vt.id} onChange={() => setSelectedVehicleType(vt.id)} className="hidden" />
+                    {vt.icon}
+                    <span className="text-sm font-bold text-center">{vt.label}</span>
+                  </label>
+                ))}
+              </div>
             </div>
+
+            {/* Tipo de Unidad (Solo si es GRÚA) */}
+            {selectedVehicleType === 'grua' && (
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">¿Qué tipo de grúa es?</label>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                  {UNIT_TYPES.map(type => (
+                    <label key={type.value}
+                      className={`relative flex flex-col items-center gap-1 p-4 rounded-xl border-2 cursor-pointer transition-all
+                        ${selectedType === type.value
+                          ? 'border-blue-600 bg-blue-50 text-blue-800'
+                          : 'border-slate-200 bg-slate-50 text-slate-600 hover:border-blue-300'}`}
+                    >
+                      <input type="radio" name="unit_type" value={type.value}
+                        checked={selectedType === type.value}
+                        onChange={() => setSelectedType(type.value)}
+                        required={selectedVehicleType === 'grua'}
+                        className="sr-only"/>
+                      <span className="text-2xl font-black">{type.value}</span>
+                      <span className="text-sm font-bold">{type.label}</span>
+                      <span className="text-xs text-center leading-tight opacity-75">{type.desc}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Herramientas */}

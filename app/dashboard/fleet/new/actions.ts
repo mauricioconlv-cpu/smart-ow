@@ -32,6 +32,7 @@ export async function addTowTruck(prevState: any, formData: FormData) {
       economic_number: formData.get('economic_number') as string,
       plates:          formData.get('plates') as string,
       unit_type:       (formData.get('unit_type') as string) || null,
+      tipo_vehiculo:   (formData.get('tipo_vehiculo') as string) || 'grua',
       tools:           tools,
       photo_url:       (formData.get('photo_url') as string) || null,
     }
@@ -76,6 +77,7 @@ export async function updateTowTruck(id: string, formData: FormData) {
       economic_number: formData.get('economic_number') as string,
       plates:          formData.get('plates') as string,
       unit_type:       (formData.get('unit_type') as string) || null,
+      tipo_vehiculo:   (formData.get('tipo_vehiculo') as string) || 'grua',
       tools:           tools,
       is_active:       formData.get('is_active') === 'true',
     }

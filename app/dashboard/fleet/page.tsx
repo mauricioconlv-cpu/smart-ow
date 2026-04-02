@@ -35,13 +35,12 @@ export default async function FleetPage() {
     if (op.tow_truck_id) operatorByTruck[op.tow_truck_id] = op.full_name ?? 'Sin nombre'
   }
 
-
   return (
     <div className="space-y-6 max-w-6xl mx-auto">
       <div className="flex justify-between items-center bg-white p-6 rounded-xl shadow-sm border border-slate-200">
         <div>
-          <h1 className="text-2xl font-bold text-slate-800">Flotilla de Grúas</h1>
-          <p className="text-slate-500 mt-1">Gestiona tus vehículos, números económicos y placas de circulación.</p>
+          <h1 className="text-2xl font-bold text-slate-800">Flotilla de Vehículos</h1>
+          <p className="text-slate-500 mt-1">Gestiona tus grúas, motos de asistencia y coches utilitarios.</p>
         </div>
         {canEdit && (
           <Link 
@@ -49,7 +48,7 @@ export default async function FleetPage() {
             className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2.5 rounded-lg flex items-center gap-2 font-medium transition-colors"
           >
             <Plus className="h-5 w-5" />
-            Nueva Grúa
+            Nuevo Vehículo
           </Link>
         )}
       </div>
@@ -59,7 +58,8 @@ export default async function FleetPage() {
           <table className="w-full text-left border-collapse">
             <thead>
               <tr className="bg-slate-50 border-b border-slate-200 text-xs uppercase tracking-wider text-slate-500 font-semibold">
-                <th className="p-4">Número Económico</th>
+                <th className="p-4">Tipo</th>
+                <th className="p-4">Económico</th>
                 <th className="p-4">Marca / Modelo</th>
                 <th className="p-4">Placas</th>
                 <th className="p-4">Estado</th>
@@ -70,13 +70,15 @@ export default async function FleetPage() {
             <tbody className="divide-y divide-slate-100 uppercase">
               {towTrucks?.map((truck) => (
                 <tr key={truck.id} className="hover:bg-slate-50 transition-colors">
-                  <td className="p-4">
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 bg-slate-100 rounded-lg flex items-center justify-center text-slate-600">
-                        <Truck className="w-5 h-5" />
+                  <td className="p-4 text-center">
+                      <div className="w-10 h-10 bg-slate-100 rounded-lg flex items-center justify-center text-slate-600 mx-auto" title={truck.tipo_vehiculo}>
+                        {truck.tipo_vehiculo === 'moto' ? <span className="text-xl">🏍️</span> : 
+                         truck.tipo_vehiculo === 'utilitario' ? <span className="text-xl">🚗</span> : 
+                         <Truck className="w-5 h-5" />}
                       </div>
-                      <span className="font-bold text-slate-800">{truck.economic_number}</span>
-                    </div>
+                  </td>
+                  <td className="p-4">
+                      <span className="font-bold text-slate-800 text-lg">{truck.economic_number}</span>
                   </td>
                   <td className="p-4 text-slate-600 font-medium">{truck.brand} - {truck.model}</td>
                   <td className="p-4 text-slate-600">{truck.plates}</td>
@@ -104,8 +106,8 @@ export default async function FleetPage() {
               ))}
               {(!towTrucks || towTrucks.length === 0) && (
                 <tr>
-                  <td colSpan={6} className="p-12 text-center text-slate-500">
-                    No hay grúas registradas aún. Clic en "Nueva Grúa" para comenzar.
+                  <td colSpan={7} className="p-12 text-center text-slate-500">
+                    No hay vehículos registrados aún. Clic en "Nuevo Vehículo" para comenzar.
                   </td>
                 </tr>
               )}

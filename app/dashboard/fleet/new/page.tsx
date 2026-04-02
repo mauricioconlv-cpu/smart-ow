@@ -24,6 +24,7 @@ export default function NewTowTruckPage() {
   const [state, formAction, isPending] = useActionState(addTowTruck, null)
   const [selectedTools, setSelectedTools] = useState<string[]>([])
   const [selectedType, setSelectedType] = useState('')
+  const [selectedVehicleType, setSelectedVehicleType] = useState('grua')
   const [photoUrl, setPhotoUrl] = useState('')
 
   const toggleTool = (value: string) => {
@@ -125,40 +126,66 @@ export default function NewTowTruckPage() {
             </div>
           </div>
 
-          {/* Clasificación de Unidad */}
+          {/* Clasificación de Vehículo y Unidad */}
           <div className="space-y-4">
-            <h3 className="font-semibold text-slate-700 border-b pb-2">¿Qué tipo de unidad es?</h3>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-              {UNIT_TYPES.map(type => (
-                <label
-                  key={type.value}
-                  className={`relative flex flex-col items-center gap-1 p-4 rounded-xl border-2 cursor-pointer transition-all
-                    ${selectedType === type.value
-                      ? 'border-blue-600 bg-blue-50 text-blue-800'
-                      : 'border-slate-200 bg-slate-50 text-slate-600 hover:border-blue-300 hover:bg-blue-50/50'
-                    }`}
-                >
-                  <input
-                    type="radio"
-                    name="unit_type"
-                    value={type.value}
-                    required
-                    className="sr-only"
-                    onChange={() => setSelectedType(type.value)}
-                  />
-                  <span className="text-2xl font-black">{type.value}</span>
-                  <span className="text-sm font-bold">{type.label}</span>
-                  <span className="text-xs text-center leading-tight opacity-75">{type.desc}</span>
-                  {selectedType === type.value && (
-                    <span className="absolute top-2 right-2 w-4 h-4 rounded-full bg-blue-600 flex items-center justify-center">
-                      <svg className="w-2.5 h-2.5 text-white" fill="currentColor" viewBox="0 0 12 12">
-                        <path d="M3.5 6.5L5 8l3.5-4"/>
-                      </svg>
-                    </span>
-                  )}
-                </label>
-              ))}
+            <h3 className="font-semibold text-slate-700 border-b pb-2">Clasificación Básica</h3>
+            
+            {/* Tipo de Vehículo */}
+            <div className="mb-6">
+              <label className="block text-sm font-medium text-slate-700 mb-2">Clase de Vehículo</label>
+              <div className="flex gap-4">
+                {[
+                  { id: 'grua', label: 'Grúa de Arrastre', icon: <Truck className="w-5 h-5 mb-1" /> },
+                  { id: 'moto', label: 'Motocicleta (Asistencia)', icon: <span className="text-xl mb-1">🏍️</span> },
+                  { id: 'utilitario', label: 'Coche Utilitario', icon: <span className="text-xl mb-1">🚗</span> }
+                ].map(vt => (
+                  <label key={vt.id} className={`flex-1 flex flex-col items-center justify-center p-3 rounded-lg border-2 cursor-pointer transition-colors
+                    ${selectedVehicleType === vt.id ? 'border-blue-600 bg-blue-50 text-blue-800' : 'border-slate-200 bg-slate-50 text-slate-600 hover:border-blue-300'}`}>
+                    <input type="radio" name="tipo_vehiculo" value={vt.id} checked={selectedVehicleType === vt.id} onChange={() => setSelectedVehicleType(vt.id)} className="hidden" />
+                    {vt.icon}
+                    <span className="text-sm font-bold text-center">{vt.label}</span>
+                  </label>
+                ))}
+              </div>
             </div>
+
+            {/* Sub-Clasificación Unidad (Solo si es GRÚA) */}
+            {selectedVehicleType === 'grua' && (
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">¿Qué tipo de grúa es?</label>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                  {UNIT_TYPES.map(type => (
+                    <label
+                      key={type.value}
+                      className={`relative flex flex-col items-center gap-1 p-4 rounded-xl border-2 cursor-pointer transition-all
+                        ${selectedType === type.value
+                          ? 'border-blue-600 bg-blue-50 text-blue-800'
+                          : 'border-slate-200 bg-slate-50 text-slate-600 hover:border-blue-300 hover:bg-blue-50/50'
+                        }`}
+                    >
+                      <input
+                        type="radio"
+                        name="unit_type"
+                        value={type.value}
+                        required={selectedVehicleType === 'grua'}
+                        className="sr-only"
+                        onChange={() => setSelectedType(type.value)}
+                      />
+                      <span className="text-2xl font-black">{type.value}</span>
+                      <span className="text-sm font-bold">{type.label}</span>
+                      <span className="text-xs text-center leading-tight opacity-75">{type.desc}</span>
+                      {selectedType === type.value && (
+                        <span className="absolute top-2 right-2 w-4 h-4 rounded-full bg-blue-600 flex items-center justify-center">
+                          <svg className="w-2.5 h-2.5 text-white" fill="currentColor" viewBox="0 0 12 12">
+                            <path d="M3.5 6.5L5 8l3.5-4"/>
+                          </svg>
+                        </span>
+                      )}
+                    </label>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Herramientas */}
