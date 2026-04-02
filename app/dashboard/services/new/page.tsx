@@ -137,15 +137,17 @@ export default function NewServicePage() {
     const desglose: Record<string, number> = {}
 
     if (generalRule) {
-      // ─── NUEVO FORMATO: costos individuales por tipo de grúa ───────────────
-      const unitType = truck?.unit_type?.toLowerCase() ?? 'a'  // default tipo A
+      // ─── NUEVO FORMATO: costos por tipo de grúa o de asistencia ───────────────
+      const baseKey = categoriaServicio === 'arrastre' 
+        ? (truck?.unit_type?.toLowerCase() ?? 'a') 
+        : categoriaServicio
 
       if (tipoServicio === 'local') {
-        const costoLocal = Number(generalRule[`costo_local_tipo_${unitType}`] || 0)
+        const costoLocal = Number(generalRule[`costo_local_tipo_${baseKey}`] || 0)
         if (costoLocal > 0) desglose.arrastre_base = costoLocal
       } else {
-        const banderazo = Number(generalRule[`costo_bande_tipo_${unitType}`] || 0)
-        const costoPorKm = Number(generalRule[`costo_km_tipo_${unitType}`] || 0)
+        const banderazo = Number(generalRule[`costo_bande_tipo_${baseKey}`] || 0)
+        const costoPorKm = Number(generalRule[`costo_km_tipo_${baseKey}`] || 0)
         if (banderazo > 0) desglose.banderazo = banderazo
         if (costoPorKm > 0 && distanciaAproximada > 0) desglose.km = distanciaAproximada * costoPorKm
       }
@@ -198,7 +200,7 @@ export default function NewServicePage() {
     const total = Object.values(desglose).reduce((a, b) => a + b, 0)
     setCostoDesglose(desglose)
     setCostoCalculado(total)
-  }, [selectedClient, selectedTruck, tipoServicio, distanciaAproximada, clients, towTrucks, requiereManiobra, requierePasoCorriente, herramientasUsadas])
+  }, [selectedClient, selectedTruck, tipoServicio, categoriaServicio, distanciaAproximada, clients, towTrucks, requiereManiobra, requierePasoCorriente, herramientasUsadas])
 
   const handleCreateService = async () => {
     if (!selectedClient) { setCreateError('Selecciona una aseguradora/cliente.'); return }
