@@ -534,6 +534,7 @@ export default function ServiceCapturePage() {
   )
 
   const ro = !isEditing // read-only shorthand
+  const isArrastre = service?.categoria_servicio === 'arrastre' || !service?.categoria_servicio
 
   return (
     <div className="max-w-4xl mx-auto pb-28 space-y-5">
@@ -671,23 +672,29 @@ export default function ServiceCapturePage() {
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
         <SectionHeader icon={FileText} title="Motivo del Servicio" color="text-orange-600" />
 
-        <Field label="Tipo de Solicitud">
-          {ro ? (
-            <ReadValue value={serviceReason === 'siniestro' ? '🚨 Siniestro' : serviceReason === 'asistencia' ? '🔧 Asistencia' : null} />
-          ) : (
-            <div className="flex gap-3 mt-1">
-              {([['siniestro','🚨 Siniestro'],['asistencia','🔧 Asistencia']] as const).map(([v, l]) => (
-                <button key={v} type="button" onClick={() => setServiceReason(v)}
-                  className={`flex-1 py-3 rounded-xl text-sm font-bold border-2 capitalize transition ${
-                    serviceReason === v ? 'bg-orange-500 text-white border-orange-500' : 'bg-white text-slate-600 border-slate-200 hover:border-orange-300'
-                  }`}>{l}</button>
-              ))}
-            </div>
-          )}
-        </Field>
+        {isArrastre ? (
+          <Field label="Tipo de Solicitud">
+            {ro ? (
+              <ReadValue value={serviceReason === 'siniestro' ? '🚨 Siniestro' : serviceReason === 'asistencia' ? '🔧 Asistencia' : null} />
+            ) : (
+              <div className="flex gap-3 mt-1">
+                {([['siniestro','🚨 Siniestro'],['asistencia','🔧 Asistencia']] as const).map(([v, l]) => (
+                  <button key={v} type="button" onClick={() => setServiceReason(v)}
+                    className={`flex-1 py-3 rounded-xl text-sm font-bold border-2 capitalize transition ${
+                      serviceReason === v ? 'bg-orange-500 text-white border-orange-500' : 'bg-white text-slate-600 border-slate-200 hover:border-orange-300'
+                    }`}>{l}</button>
+                ))}
+              </div>
+            )}
+          </Field>
+        ) : (
+          <div className="mb-2 px-3 py-2 bg-blue-50 text-blue-700 rounded-lg text-sm font-bold flex items-center gap-2">
+            <Wrench className="w-4 h-4" /> Tipo de Solicitud: Asistencia Vial
+          </div>
+        )}
 
         {/* SINIESTRO FLOW */}
-        {serviceReason === 'siniestro' && (
+        {isArrastre && serviceReason === 'siniestro' && (
           <div className="mt-5 space-y-4 pl-4 border-l-4 border-orange-300">
             <YesNo label="¿Ya se encuentra el Ajustador en sitio?" value={adjusterPresent} onChange={setAdjusterPresent} readOnly={ro} />
             <YesNo label="¿Causó daños al asfalto, banquetas o monumentos?" value={causedDamage} onChange={setCausedDamage} readOnly={ro} />
@@ -714,7 +721,7 @@ export default function ServiceCapturePage() {
         )}
 
         {/* ASISTENCIA FLOW */}
-        {serviceReason === 'asistencia' && (
+        {(!isArrastre || serviceReason === 'asistencia') && (
           <div className="mt-5 space-y-4 pl-4 border-l-4 border-amber-300">
             <Field label="Tipo de Falla">
               {ro ? (
@@ -841,31 +848,35 @@ export default function ServiceCapturePage() {
 
       {/* ── 4. Maniobras ─────────────────────────────────── */}
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
-        <SectionHeader icon={Wrench} title="Maniobras y Condiciones" color="text-red-600" />
+        <SectionHeader icon={Wrench} title="Maniobras y Ubicación" color="text-red-600" />
         <div className="space-y-5">
-          <YesNo label="¿Vehículo en Neutral?" value={neutral} onChange={setNeutral} readOnly={ro} />
-          {neutral === false && (
-            <div className="pl-4 border-l-4 border-red-200">
-              <Field label="Tipo de Transmisión">
-                {ro ? <ReadValue value={transmissionType} />
-                  : <div className="flex gap-2 mt-1">
-                      {([['estandar','Estándar'],['automatico','Automático']] as const).map(([v,l]) => (
-                        <button key={v} type="button" onClick={() => setTransmissionType(v)}
-                          className={`flex-1 py-2.5 rounded-lg text-sm font-semibold border-2 transition ${transmissionType === v ? 'bg-slate-700 text-white border-slate-700' : 'bg-white text-slate-600 border-slate-200'}`}>
-                          {l}
-                        </button>
-                      ))}
-                    </div>
-                }
-              </Field>
-            </div>
-          )}
+          {isArrastre && (
+            <>
+              <YesNo label="¿Vehículo en Neutral?" value={neutral} onChange={setNeutral} readOnly={ro} />
+              {neutral === false && (
+                <div className="pl-4 border-l-4 border-red-200">
+                  <Field label="Tipo de Transmisión">
+                    {ro ? <ReadValue value={transmissionType} />
+                      : <div className="flex gap-2 mt-1">
+                          {([['estandar','Estándar'],['automatico','Automático']] as const).map(([v,l]) => (
+                            <button key={v} type="button" onClick={() => setTransmissionType(v)}
+                              className={`flex-1 py-2.5 rounded-lg text-sm font-semibold border-2 transition ${transmissionType === v ? 'bg-slate-700 text-white border-slate-700' : 'bg-white text-slate-600 border-slate-200'}`}>
+                              {l}
+                            </button>
+                          ))}
+                        </div>
+                    }
+                  </Field>
+                </div>
+              )}
 
-          <YesNo label="¿Las Llantas Giran?" value={wheelsSpin} onChange={setWheelsSpin} readOnly={ro} />
-          {wheelsSpin === false && (
-            <div className="pl-4 border-l-4 border-red-200">
-              <YesNo label="¿El Volante Gira?" value={steeringSpin} onChange={setSteeringSpin} readOnly={ro} />
-            </div>
+              <YesNo label="¿Las Llantas Giran?" value={wheelsSpin} onChange={setWheelsSpin} readOnly={ro} />
+              {wheelsSpin === false && (
+                <div className="pl-4 border-l-4 border-red-200">
+                  <YesNo label="¿El Volante Gira?" value={steeringSpin} onChange={setSteeringSpin} readOnly={ro} />
+                </div>
+              )}
+            </>
           )}
 
           <Field label="¿Dónde se Encuentra el Vehículo?">
@@ -1005,7 +1016,7 @@ export default function ServiceCapturePage() {
               <button onClick={() => handleSave('asignando')} disabled={isSaving}
                 className="w-full sm:w-auto px-8 py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold text-sm rounded-xl shadow-md transition disabled:opacity-40 flex items-center justify-center gap-2">
                 {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-                {isSaving ? 'Guardando...' : 'Guardar Datos → Asignar Grúa'}
+                {isSaving ? 'Guardando...' : (isArrastre ? 'Guardar Datos → Asignar Grúa' : 'Guardar Datos → Asignar Vehículo')}
               </button>
             </>
           )}

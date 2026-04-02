@@ -51,13 +51,20 @@ const STATUS_CONFIG: Record<string, { label: string; color: string; dot: string;
   cancelado_posterior:{ label: 'Cancelado Posterior',    color: '#ef4444', dot: '#f87171', step: -1 },
 }
 
-const PROGRESS_STEPS = [
-  { key: 'rumbo_contacto',     label: 'En Camino',  icon: '🚛' },
-  { key: 'arribo_origen',      label: 'En Sitio',   icon: '📍' },
-  { key: 'contacto_usuario',   label: 'Contacto',   icon: '🤝' },
-  { key: 'contacto',           label: 'Enganche',   icon: '🔗' },
-  { key: 'inicio_traslado',    label: 'Traslado',   icon: '🏎️' },
-  { key: 'traslado_concluido', label: 'Entregado',  icon: '🏁' },
+const PROGRESS_STEPS_ARRASTRE = [
+  { key: 'rumbo_contacto',     label: 'En Camino',  icon: '🚛', step: 1 },
+  { key: 'arribo_origen',      label: 'En Sitio',   icon: '📍', step: 2 },
+  { key: 'contacto_usuario',   label: 'Contacto',   icon: '🤝', step: 3 },
+  { key: 'contacto',           label: 'Enganche',   icon: '🔗', step: 4 },
+  { key: 'inicio_traslado',    label: 'Traslado',   icon: '🏎️', step: 5 },
+  { key: 'traslado_concluido', label: 'Entregado',  icon: '🏁', step: 6 },
+]
+
+const PROGRESS_STEPS_ASISTENCIA = [
+  { key: 'rumbo_contacto',     label: 'En Camino',  icon: '🚛', step: 1 },
+  { key: 'arribo_origen',      label: 'En Sitio',   icon: '📍', step: 2 },
+  { key: 'contacto_usuario',   label: 'Contacto',   icon: '🤝', step: 3 },
+  { key: 'traslado_concluido', label: 'Término',    icon: '🏁', step: 6 },
 ]
 
 export default function TrackingPage() {
@@ -140,6 +147,12 @@ export default function TrackingPage() {
   const statusCfg = STATUS_CONFIG[status] ?? STATUS_CONFIG.creado
   const step      = statusCfg.step
 
+  const isArrastre = service?.categoria_servicio === 'arrastre' || !service?.categoria_servicio
+  const activeSteps = isArrastre ? PROGRESS_STEPS_ARRASTRE : PROGRESS_STEPS_ASISTENCIA
+  const statusLabel = (!isArrastre && status === 'traslado_concluido') 
+    ? 'Asistencia Completada' 
+    : (!isArrastre && status === 'contacto') ? 'Maniobra / Asistencia' : statusCfg.label
+
   if (loading) return (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 300 }}>
       <Loader2 style={{ width: 28, height: 28, animation: 'spin 1s linear infinite', color: '#3b82f6' }} />
@@ -177,7 +190,7 @@ export default function TrackingPage() {
             <p style={{ margin: 0, fontSize: 11, fontWeight: 700, color: statusCfg.color, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
               Estado Actual
             </p>
-            <p style={{ margin: 0, fontSize: 20, fontWeight: 800, color: '#0f172a' }}>{statusCfg.label}</p>
+            <p style={{ margin: 0, fontSize: 20, fontWeight: 800, color: '#0f172a' }}>{statusLabel}</p>
           </div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
@@ -204,9 +217,9 @@ export default function TrackingPage() {
             Progreso del Servicio
           </p>
           <div style={{ display: 'flex', alignItems: 'center' }}>
-            {PROGRESS_STEPS.map((s, i) => {
-              const done   = step > i + 1
-              const active = step === i + 1
+            {activeSteps.map((s, i) => {
+              const done   = step > s.step
+              const active = step === s.step
               return (
                 <div key={s.key} style={{ display: 'flex', alignItems: 'center', flex: 1 }}>
                   <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, minWidth: 64 }}>
@@ -223,7 +236,7 @@ export default function TrackingPage() {
                       {s.label}
                     </span>
                   </div>
-                  {i < PROGRESS_STEPS.length - 1 && (
+                  {i < activeSteps.length - 1 && (
                     <div style={{ flex: 1, height: 3, background: done ? '#10b981' : '#e2e8f0', margin: '0 4px', marginBottom: 20, borderRadius: 2, transition: 'all 0.3s' }} />
                   )}
                 </div>
