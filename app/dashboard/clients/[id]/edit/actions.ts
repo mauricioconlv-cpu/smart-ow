@@ -17,21 +17,30 @@ export async function updateClientWithRates(formData: FormData): Promise<void> {
   // 1. Actualizar nombre del cliente + configuración Costo Muerto
   await supabase.from('clients').update({
     name: clientName,
-    costo_muerto_activo:    formData.get('costo_muerto_activo') === 'on',
+    costo_muerto_activo:     formData.get('costo_muerto_activo') === 'on',
     costo_muerto_umbral_min: parseInt(formData.get('costo_muerto_umbral_min') as string) || 15,
     costo_muerto_pct:        parseFloat(formData.get('costo_muerto_pct') as string) || 25,
   }).eq('id', clientId)
 
   // 2. Construir los costos
   const costs: Record<string, number> = {}
+
+  // Grúas (A/B/C/D) + Auxilios Viales (mismo esquema de columnas)
   for (const t of ['a', 'b', 'c', 'd', 'paso_corriente', 'cambio_llanta', 'gasolina']) {
     costs[`costo_local_tipo_${t}`] = parseFloat(formData.get(`costo_local_tipo_${t}`) as string) || 0
     costs[`costo_bande_tipo_${t}`] = parseFloat(formData.get(`costo_bande_tipo_${t}`) as string) || 0
-    costs[`costo_km_tipo_${t}`]    = parseFloat(formData.get(`costo_km_tipo_${t}`) as string) || 0
+    costs[`costo_km_tipo_${t}`]    = parseFloat(formData.get(`costo_km_tipo_${t}`)    as string) || 0
   }
+
+  // Servicios Médicos
+  for (const field of ['costo_medico_domicilio', 'costo_reparto_medicamento', 'costo_telemedicina']) {
+    costs[field] = parseFloat(formData.get(field) as string) || 0
+  }
+
+  // Costos adicionales y herramientas
   for (const field of [
     'costo_maniobra', 'costo_hora_espera', 'costo_abanderamiento', 'costo_resguardo',
-    'costo_dollys', 'costo_patines', 'costo_go_jacks', 
+    'costo_dollys', 'costo_patines', 'costo_go_jacks',
     'costo_pistola_impacto', 'costo_dardos', 'costo_bidon',
     'costo_rescate_subterraneo', 'costo_adaptacion',
     'costo_blindaje_1', 'costo_blindaje_2', 'costo_blindaje_3', 'costo_blindaje_4',
@@ -41,7 +50,6 @@ export async function updateClientWithRates(formData: FormData): Promise<void> {
   }
 
   // 3. SOLO UPDATE — el trigger SQL garantiza que pricing_rules SIEMPRE existe
-  //    No se necesita INSERT ni DELETE desde el código
   await supabase
     .from('pricing_rules')
     .update({ tipo: 'general', ...costs })

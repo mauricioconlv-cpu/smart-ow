@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { createBrowserClient } from '@supabase/ssr'
-import { Plus, MapPin, Calculator, AlertCircle, Wrench, FileText, X, Calendar } from 'lucide-react'
+import { Plus, MapPin, Calculator, AlertCircle, Wrench, FileText, X, Calendar, Lock, Unlock, AlertTriangle } from 'lucide-react'
 
 const supabase = createBrowserClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -39,6 +39,14 @@ export default function NewServicePage() {
   const [destLatLng, setDestLatLng] = useState<{lat:number,lng:number}|null>(null)
   const [showRatesModal, setShowRatesModal] = useState(false)
   const [costoParticular, setCostoParticular] = useState<string>('')
+
+  // Candado de costo tabulado
+  const [isCostLocked, setIsCostLocked]       = useState(true)
+  const [showUnlockForm, setShowUnlockForm]   = useState(false)
+  const [costOverride, setCostOverride]        = useState('')
+  const [overrideReason, setOverrideReason]   = useState('')
+  const [costWasOverridden, setCostWasOverridden] = useState(false)
+  const [costoOriginal, setCostoOriginal]     = useState(0)
 
   const isParticular = selectedClient === 'particular'
 
@@ -160,6 +168,15 @@ export default function NewServicePage() {
     setEtaMinutes(Math.round((dist / 40) * 60))
   }, [selectedTruck, originLatLng, towTrucks])
 
+  // Resetear candado cuando cambia el cliente o tipo de servicio
+  useEffect(() => {
+    setIsCostLocked(true)
+    setShowUnlockForm(false)
+    setCostOverride('')
+    setOverrideReason('')
+    setCostWasOverridden(false)
+  }, [selectedClient, categoriaServicio, tipoServicio])
+
   // Motor de cotización inteligente
   useEffect(() => {
     if (!selectedClient) {
@@ -242,6 +259,7 @@ export default function NewServicePage() {
     const total = Object.values(desglose).reduce((a, b) => a + b, 0)
     setCostoDesglose(desglose)
     setCostoCalculado(total)
+    setCostoOriginal(total) // guardar el original tabulado
   }, [selectedClient, selectedTruck, tipoServicio, categoriaServicio, distanciaAproximada, clients, towTrucks, requiereManiobra, requierePasoCorriente, herramientasUsadas])
 
   const handleCreateService = async () => {
@@ -249,7 +267,9 @@ export default function NewServicePage() {
     if (!isScheduled && !selectedTruck)  { setCreateError('Selecciona una grúa de la flotilla.'); return }
     if (isScheduled && (!scheduledDate || !scheduledTime)) { setCreateError('Ingresa la fecha y hora de la cita programada.'); return }
 
-    const costoFinal = isParticular ? (parseFloat(costoParticular) || 0) : costoCalculado
+    const costoFinal = isParticular
+      ? (parseFloat(costoParticular) || 0)
+      : costWasOverridden ? (parseFloat(costOverride) || costoCalculado) : costoCalculado
 
     setIsCreating(true)
     setCreateError('')
@@ -332,15 +352,32 @@ export default function NewServicePage() {
       }).eq('id', newService.id)
 
       // PASO 3: Log en Bitácora del nuevo servicio
-      await supabase.from('service_logs').insert({
-        service_id: newService.id,
-        company_id: profile.company_id,
-        created_by: user.id,
-        type: 'note',
-        note: `Servicio creado. Grua pre-seleccionada: ${selectedTruck ? 'Sí' : 'Ninguna'}. Pendiente de captura y asignación.`,
-        event_label: `📝 Servicio Creado`,
-        actor_role: 'admin',
-      })
+      const logEntries: any[] = [
+        {
+          service_id:  newService.id,
+          company_id:  profile.company_id,
+          created_by:  user.id,
+          type:        'note',
+          note:        `Servicio creado. Grúa pre-seleccionada: ${selectedTruck ? 'Sí' : 'Ninguna'}. Pendiente de captura y asignación.`,
+          event_label: '📝 Servicio Creado',
+          actor_role:  'admin',
+        }
+      ]
+
+      // Si el costo se modificó, agregar log de auditoría
+      if (costWasOverridden && !isParticular) {
+        logEntries.push({
+          service_id:  newService.id,
+          company_id:  profile.company_id,
+          created_by:  user.id,
+          type:        'note',
+          note:        `Costo tabulado modificado manualmente. Original: $${costoOriginal.toLocaleString('es-MX', { minimumFractionDigits: 2 })}. Nuevo: $${(parseFloat(costOverride) || costoOriginal).toLocaleString('es-MX', { minimumFractionDigits: 2 })}. Motivo: "${overrideReason}".`,
+          event_label: '🔓 Modificación de Costo',
+          actor_role:  'admin',
+        })
+      }
+
+      await supabase.from('service_logs').insert(logEntries)
       // Navegar a Captura para completar los datos del cliente/vehículo
       window.location.href = `/dashboard/services/${newService.id}/capture`
     } catch (err: any) {
@@ -790,8 +827,9 @@ export default function NewServicePage() {
 
               <div className="pt-4 border-t border-slate-700/50">
                 <p className="text-slate-400 text-sm mb-1">Costo Total Estimado</p>
-                
+
                 {isParticular ? (
+                  // ── Particular: costo libre ──────────────────────────────
                   <div className="space-y-2 mt-2">
                     <label className="block text-xs font-semibold text-emerald-400 uppercase tracking-wide">
                       Ingresa el costo acordado
@@ -801,10 +839,7 @@ export default function NewServicePage() {
                         <span className="text-slate-400 sm:text-sm">$</span>
                       </div>
                       <input
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        placeholder="0.00"
+                        type="number" min="0" step="0.01" placeholder="0.00"
                         value={costoParticular}
                         onChange={(e) => setCostoParticular(e.target.value)}
                         className="block w-full pl-7 pr-12 py-3 bg-slate-900/50 border border-slate-700 rounded-lg text-emerald-400 text-2xl font-black placeholder:text-slate-600 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all"
@@ -815,9 +850,118 @@ export default function NewServicePage() {
                     </div>
                   </div>
                 ) : (
-                  <p className="text-3xl font-black text-emerald-400">
-                    {new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(costoCalculado)}
-                  </p>
+                  // ── Aseguradora: costo tabulado con candado ───────────────
+                  <div className="mt-2 space-y-3">
+
+                    {/* Costo tabulado + botón candado */}
+                    <div className="flex items-center gap-3">
+                      <div className="flex-1">
+                        {costWasOverridden ? (
+                          <div>
+                            <p className="text-2xl font-black text-amber-400">
+                              {new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(parseFloat(costOverride) || 0)}
+                            </p>
+                            <p className="text-xs text-slate-500 line-through">
+                              Original: {new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(costoOriginal)}
+                            </p>
+                          </div>
+                        ) : (
+                          <p className="text-3xl font-black text-emerald-400">
+                            {new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(costoCalculado)}
+                          </p>
+                        )}
+                      </div>
+                      {/* Botón de candado — siempre visible si hay tarifa */}
+                      {costoCalculado > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (costWasOverridden) {
+                              // Revertir al original
+                              setCostWasOverridden(false)
+                              setCostOverride('')
+                              setOverrideReason('')
+                              setIsCostLocked(true)
+                              setShowUnlockForm(false)
+                            } else {
+                              setShowUnlockForm(v => !v)
+                            }
+                          }}
+                          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                            costWasOverridden
+                              ? 'bg-amber-500/20 text-amber-400 hover:bg-amber-500/30'
+                              : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+                          }`}
+                        >
+                          {costWasOverridden
+                            ? <><Unlock className="w-3.5 h-3.5" /> Revertir</>  
+                            : <><Lock className="w-3.5 h-3.5" /> Modificar</>}
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Formulario de desbloqueo con motivo */}
+                    {showUnlockForm && !costWasOverridden && (
+                      <div className="bg-slate-800 border border-amber-500/30 rounded-xl p-3 space-y-2">
+                        <div className="flex items-center gap-1.5 text-amber-400 text-xs font-bold">
+                          <AlertTriangle className="w-3.5 h-3.5" />
+                          Modificar costo tabulado
+                        </div>
+                        <div className="relative">
+                          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm">$</span>
+                          <input
+                            type="number" min="0" step="0.01" placeholder="Nuevo monto..."
+                            value={costOverride}
+                            onChange={e => setCostOverride(e.target.value)}
+                            className="w-full pl-7 pr-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white text-sm font-bold focus:outline-none focus:ring-2 focus:ring-amber-500"
+                          />
+                        </div>
+                        <textarea
+                          placeholder="Motivo de la modificación (requerido)..."
+                          value={overrideReason}
+                          onChange={e => setOverrideReason(e.target.value)}
+                          rows={2}
+                          className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white text-sm resize-none focus:outline-none focus:ring-2 focus:ring-amber-500 placeholder:text-slate-500"
+                        />
+                        <div className="flex gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setShowUnlockForm(false)}
+                            className="flex-1 py-1.5 rounded-lg bg-slate-700 text-slate-300 text-xs font-semibold hover:bg-slate-600"
+                          >
+                            Cancelar
+                          </button>
+                          <button
+                            type="button"
+                            disabled={!costOverride || !overrideReason.trim()}
+                            onClick={() => {
+                              if (!costOverride || !overrideReason.trim()) return
+                              setCostWasOverridden(true)
+                              setIsCostLocked(false)
+                              setShowUnlockForm(false)
+                            }}
+                            className="flex-1 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 disabled:opacity-40 text-slate-900 text-xs font-black"
+                          >
+                            Aplicar cambio
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Badge de tabulado */}
+                    {!costWasOverridden && costoCalculado > 0 && (
+                      <p className="text-xs text-slate-500 flex items-center gap-1">
+                        <Lock className="w-3 h-3" /> Costo calculado automáticamente del tabulador de {clients.find(c => c.id === selectedClient)?.name}
+                      </p>
+                    )}
+
+                    {/* Aviso de override aplicado */}
+                    {costWasOverridden && (
+                      <p className="text-xs text-amber-500 flex items-center gap-1">
+                        <Unlock className="w-3 h-3" /> Costo modificado. El motivo quedará en la bitácora.
+                      </p>
+                    )}
+                  </div>
                 )}
               </div>
 

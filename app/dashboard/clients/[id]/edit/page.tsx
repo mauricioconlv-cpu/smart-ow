@@ -1,6 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import Link from 'next/link'
-import { Save, ArrowLeft } from 'lucide-react'
+import { Save, ArrowLeft, Truck, Zap, Stethoscope, Wrench, Skull } from 'lucide-react'
 import { notFound } from 'next/navigation'
 import { updateClientWithRates } from './actions'
 
@@ -19,11 +19,27 @@ function CurrencyInput({ name, defaultValue = 0 }: { name: string; defaultValue?
   )
 }
 
-// Next.js 15: params is a Promise — must use props pattern and await
+function SectionHeader({ icon, title, subtitle, color = 'blue' }: {
+  icon: React.ReactNode; title: string; subtitle?: string; color?: string
+}) {
+  const borderColors: Record<string, string> = {
+    blue: 'border-blue-400', yellow: 'border-yellow-400', emerald: 'border-emerald-400',
+    orange: 'border-orange-400', red: 'border-red-400',
+  }
+  return (
+    <div className={`bg-white shadow rounded-lg p-6 border-l-4 ${borderColors[color] ?? borderColors.blue}`}>
+      <h3 className="text-lg font-semibold text-gray-900 mb-1 flex items-center gap-2">
+        {icon} {title}
+      </h3>
+      {subtitle && <p className="text-xs text-slate-500 mb-5">{subtitle}</p>}
+    </div>
+  )
+}
+
 export default async function EditClientPage(props: {
   params: Promise<{ id: string }>
 }) {
-  const { id } = await props.params   // ← await obligatorio en Next.js 15
+  const { id } = await props.params
 
   const supabase = await createClient()
 
@@ -49,28 +65,30 @@ export default async function EditClientPage(props: {
         </div>
       </div>
 
-      <form action={updateClientWithRates} className="space-y-8">
+      <form action={updateClientWithRates} className="space-y-6">
         <input type="hidden" name="clientId" value={client.id} />
 
-        {/* Nombre */}
+        {/* ── Información General ──────────────────────────────── */}
         <div className="bg-white shadow rounded-lg p-6">
           <h3 className="text-lg font-semibold text-gray-900 mb-4">Información General</h3>
           <label htmlFor="name" className="block text-sm font-medium text-gray-900 mb-1">
-            Nombre de la Aseguradora
+            Nombre de la Aseguradora o Cliente
           </label>
           <input type="text" name="name" id="name" required defaultValue={client.name}
-            className="block w-full rounded-md border-0 py-2.5 px-3 text-gray-900 ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-blue-600 text-sm shadow-sm" />
+            className="block w-full rounded-md border-0 py-2.5 px-3 text-gray-900 ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-blue-600 text-sm shadow-sm bg-white" />
         </div>
 
-        {/* Costos por Tipo de Servicio o Unidad */}
-        <div className="bg-white shadow rounded-lg p-6">
-          <h3 className="text-lg font-semibold text-gray-900 mb-1">Costo Base por Servicio / Grúa</h3>
-          <p className="text-xs text-slate-500 mb-4">Costo local, banderazo y precio por kilómetro para cada tipo de servicio.</p>
+        {/* ── Sección 1: Grúas / Arrastre ─────────────────────── */}
+        <div className="bg-white shadow rounded-lg p-6 border-l-4 border-blue-400">
+          <h3 className="text-lg font-semibold text-gray-900 mb-1 flex items-center gap-2">
+            <Truck className="h-5 w-5 text-blue-500" /> Grúas / Arrastre
+          </h3>
+          <p className="text-xs text-slate-500 mb-4">Costo local, banderazo y precio por kilómetro según el tipo de grúa.</p>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b-2 border-slate-200">
-                  <th className="text-left pb-3 pr-6 text-xs font-bold text-slate-500 uppercase w-28">Tipo</th>
+                  <th className="text-left pb-3 pr-6 text-xs font-bold text-slate-500 uppercase w-32">Tipo</th>
                   <th className="text-left pb-3 pr-4 text-xs font-bold text-slate-500 uppercase">Costo Local</th>
                   <th className="text-left pb-3 pr-4 text-xs font-bold text-slate-500 uppercase">Banderazo</th>
                   <th className="text-left pb-3 text-xs font-bold text-slate-500 uppercase">$/Km</th>
@@ -82,9 +100,6 @@ export default async function EditClientPage(props: {
                   { key: 'b', label: 'Tipo B', desc: '3.5–7.5 ton', color: 'text-blue-700 bg-blue-100' },
                   { key: 'c', label: 'Tipo C', desc: '7.5–11 ton',  color: 'text-orange-700 bg-orange-100' },
                   { key: 'd', label: 'Tipo D', desc: '> 11 ton',    color: 'text-red-700 bg-red-100' },
-                  { key: 'paso_corriente', label: 'Paso Corriente', desc: 'Asistencia Vial', color: 'text-yellow-700 bg-yellow-100' },
-                  { key: 'cambio_llanta',  label: 'Cambio Llanta',  desc: 'Asistencia Vial', color: 'text-slate-700 bg-slate-200' },
-                  { key: 'gasolina',       label: 'Gasolina',       desc: 'Asistencia Vial', color: 'text-purple-700 bg-purple-100' },
                 ] as const).map(({ key, label, desc, color }) => (
                   <tr key={key}>
                     <td className="py-4 pr-6">
@@ -101,24 +116,90 @@ export default async function EditClientPage(props: {
           </div>
         </div>
 
-        {/* Costos adicionales */}
-        <div className="bg-white shadow rounded-lg p-6">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">Costos Adicionales</h3>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        {/* ── Sección 2: Asistencia Vial ─────────────────────── */}
+        <div className="bg-white shadow rounded-lg p-6 border-l-4 border-yellow-400">
+          <h3 className="text-lg font-semibold text-gray-900 mb-1 flex items-center gap-2">
+            <Zap className="h-5 w-5 text-yellow-500" /> Auxilios Viales
+          </h3>
+          <p className="text-xs text-slate-500 mb-4">
+            Tarifa por servicio de asistencia vial. El banderazo y $/km aplican solo si el servicio es foráneo.
+          </p>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b-2 border-slate-200">
+                  <th className="text-left pb-3 pr-6 text-xs font-bold text-slate-500 uppercase w-40">Servicio</th>
+                  <th className="text-left pb-3 pr-4 text-xs font-bold text-slate-500 uppercase">Tarifa Fija / Local</th>
+                  <th className="text-left pb-3 pr-4 text-xs font-bold text-slate-500 uppercase">Banderazo (foráneo)</th>
+                  <th className="text-left pb-3 text-xs font-bold text-slate-500 uppercase">$/Km (foráneo)</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {([
+                  { key: 'cambio_llanta',  label: 'Cambio de Llanta',      desc: 'Auxilio vial', color: 'text-slate-700 bg-slate-200' },
+                  { key: 'paso_corriente', label: 'Paso de Corriente',     desc: 'Auxilio vial', color: 'text-yellow-700 bg-yellow-100' },
+                  { key: 'gasolina',       label: 'Suministro de Gasolina', desc: 'Auxilio vial', color: 'text-purple-700 bg-purple-100' },
+                ] as const).map(({ key, label, desc, color }) => (
+                  <tr key={key}>
+                    <td className="py-4 pr-6">
+                      <span className={`inline-flex items-center px-2.5 py-1 rounded-lg font-black text-sm ${color}`}>{label}</span>
+                      <span className="block text-xs text-slate-400 mt-1">{desc}</span>
+                    </td>
+                    <td className="py-4 pr-4"><CurrencyInput name={`costo_local_tipo_${key}`} defaultValue={rule[`costo_local_tipo_${key}`] ?? 0} /></td>
+                    <td className="py-4 pr-4"><CurrencyInput name={`costo_bande_tipo_${key}`} defaultValue={rule[`costo_bande_tipo_${key}`] ?? 0} /></td>
+                    <td className="py-4"><CurrencyInput name={`costo_km_tipo_${key}`} defaultValue={rule[`costo_km_tipo_${key}`] ?? 0} /></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* ── Sección 3: Servicios Médicos ─────────────────────── */}
+        <div className="bg-white shadow rounded-lg p-6 border-l-4 border-emerald-400">
+          <h3 className="text-lg font-semibold text-gray-900 mb-1 flex items-center gap-2">
+            <Stethoscope className="h-5 w-5 text-emerald-500" /> Servicios Médicos
+          </h3>
+          <p className="text-xs text-slate-500 mb-4">
+            Tarifa negociada para cada tipo de servicio médico cubierto por esta aseguradora.
+          </p>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             {[
-              { name: 'costo_maniobra', label: 'Maniobra' },
-              { name: 'costo_hora_espera', label: 'Hora de Espera' },
-              { name: 'costo_abanderamiento', label: 'Abanderamiento' },
-              { name: 'costo_resguardo', label: 'Resguardo' },
-              { name: 'costo_dollys', label: 'Dollys' },
-              { name: 'costo_patines', label: 'Patines' },
-              { name: 'costo_go_jacks', label: 'Go Jacks' },
-              { name: 'costo_pistola_impacto', label: 'Pistola de Impacto' },
-              { name: 'costo_dardos', label: 'Dardos / Punteros' },
-              { name: 'costo_bidon', label: 'Bidón p/Gasolina' },
+              { name: 'costo_medico_domicilio',    label: '🩺 Médico a Domicilio',      desc: 'Consulta presencial en el domicilio' },
+              { name: 'costo_reparto_medicamento', label: '📦 Reparto de Medicamento',   desc: 'Entrega de medicamentos a domicilio' },
+              { name: 'costo_telemedicina',        label: '📹 Telemedicina',             desc: 'Consulta médica en línea' },
+            ].map(({ name, label, desc }) => (
+              <div key={name} className="bg-emerald-50 rounded-xl p-4 border border-emerald-100">
+                <label className="block text-sm font-bold text-emerald-800 mb-0.5">{label}</label>
+                <p className="text-xs text-emerald-600 mb-2">{desc}</p>
+                <CurrencyInput name={name} defaultValue={rule[name] ?? 0} />
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* ── Sección 4: Costos Adicionales ────────────────────── */}
+        <div className="bg-white shadow rounded-lg p-6 border-l-4 border-orange-400">
+          <h3 className="text-lg font-semibold text-gray-900 mb-1 flex items-center gap-2">
+            <Wrench className="h-5 w-5 text-orange-500" /> Costos de Operación y Herramientas
+          </h3>
+          <p className="text-xs text-slate-500 mb-4">Costos extras que se suman al servicio según lo utilizado.</p>
+
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-5">
+            {[
+              { name: 'costo_maniobra',         label: 'Maniobra' },
+              { name: 'costo_hora_espera',       label: 'Hora de Espera' },
+              { name: 'costo_abanderamiento',    label: 'Abanderamiento' },
+              { name: 'costo_resguardo',         label: 'Resguardo' },
+              { name: 'costo_dollys',            label: 'Dollys' },
+              { name: 'costo_patines',           label: 'Patines' },
+              { name: 'costo_go_jacks',          label: 'Go Jacks' },
+              { name: 'costo_pistola_impacto',   label: 'Pistola de Impacto' },
+              { name: 'costo_dardos',            label: 'Dardos / Punteros' },
+              { name: 'costo_bidon',             label: 'Bidón p/Gasolina' },
               { name: 'costo_rescate_subterraneo', label: 'Rescate Sub.' },
-              { name: 'costo_adaptacion', label: 'Adaptación' },
-              { name: 'costo_kg_carga', label: 'Kg de Carga' },
+              { name: 'costo_adaptacion',        label: 'Adaptación' },
+              { name: 'costo_kg_carga',          label: 'Kg de Carga' },
             ].map(({ name, label }) => (
               <div key={name}>
                 <label className="block text-xs font-semibold text-slate-600 mb-1">{label}</label>
@@ -126,7 +207,25 @@ export default async function EditClientPage(props: {
               </div>
             ))}
           </div>
-          <div className="mt-4 border-t pt-4">
+
+          <div className="border-t pt-4">
+            <h4 className="text-sm font-semibold text-slate-700 mb-3 flex items-center gap-2">
+              Servicios Especializados y Larga Distancia
+            </h4>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 mb-1">Grúa Rotativa</label>
+                <CurrencyInput name="costo_rescate_subterraneo" defaultValue={rule.costo_rescate_subterraneo ?? 0} />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 mb-1">Adaptaciones (dolly, etc.)</label>
+                <CurrencyInput name="costo_adaptacion" defaultValue={rule.costo_adaptacion ?? 0} />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 mb-1">Kilo de Carga</label>
+                <CurrencyInput name="costo_kg_carga" defaultValue={rule.costo_kg_carga ?? 0} />
+              </div>
+            </div>
             <h4 className="text-sm font-semibold text-slate-700 mb-3">Blindaje por Nivel</h4>
             <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">
               {[1,2,3,4,5,6,7].map(n => (
@@ -139,19 +238,16 @@ export default async function EditClientPage(props: {
           </div>
         </div>
 
-
         {/* ── Costo Muerto ─────────────────────────────────────── */}
         <div className="bg-white shadow rounded-lg p-6 border-l-4 border-red-400">
           <h3 className="text-lg font-semibold text-gray-900 mb-1 flex items-center gap-2">
-            ☠️ Configuración de Costo Muerto
+            <Skull className="h-5 w-5 text-red-500" /> Configuración de Costo Muerto
           </h3>
           <p className="text-xs text-slate-500 mb-5">
             Si el servicio es cancelado una vez que ya se asignó un operador, el sistema calculará
-            un costo muerto. Aplica cuando el tiempo transcurrido desde la asignación supera el
-            umbral configurado.
+            un costo muerto. Aplica cuando el tiempo transcurrido desde la asignación supera el umbral configurado.
           </p>
 
-          {/* Toggle activo */}
           <label className="flex items-center gap-3 cursor-pointer mb-5">
             <input
               type="checkbox"
@@ -163,7 +259,6 @@ export default async function EditClientPage(props: {
           </label>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-            {/* Umbral de tiempo */}
             <div>
               <label className="block text-xs font-semibold text-slate-600 mb-1">
                 Minutos de gracia (costo muerto = $0 si cancela antes)
@@ -178,10 +273,8 @@ export default async function EditClientPage(props: {
                 />
                 <span className="absolute right-3 top-2 text-slate-400 text-sm font-medium">min</span>
               </div>
-              <p className="text-xs text-slate-400 mt-1">Ejemplo: 15 → cancela dentro de 15 min = $0</p>
             </div>
 
-            {/* Porcentaje */}
             <div>
               <label className="block text-xs font-semibold text-slate-600 mb-1">
                 Porcentaje del costo total (cuando supera el umbral)
@@ -204,7 +297,6 @@ export default async function EditClientPage(props: {
                   </label>
                 ))}
               </div>
-              <p className="text-xs text-slate-400 mt-1">% del costo original del servicio a cobrar</p>
             </div>
           </div>
         </div>
