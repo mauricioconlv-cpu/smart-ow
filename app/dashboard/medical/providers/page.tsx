@@ -30,6 +30,8 @@ export default function MedicalProvidersPage() {
   const [editingId, setEditingId] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [filterActive, setFilterActive] = useState<'all' | 'active' | 'inactive'>('active')
+  const [companyId, setCompanyId] = useState<string | null>(null)
+  const [saveError, setSaveError] = useState('')
 
   // Form state
   const [fullName, setFullName] = useState('')
@@ -50,7 +52,16 @@ export default function MedicalProvidersPage() {
     setLoading(false)
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
-  useEffect(() => { fetchProviders() }, [fetchProviders])
+  useEffect(() => {
+    fetchProviders()
+    // Obtener company_id del usuario actual
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (user) {
+        supabase.from('profiles').select('company_id').eq('id', user.id).single()
+          .then(({ data }) => setCompanyId(data?.company_id ?? null))
+      }
+    })
+  }, [fetchProviders]) // eslint-disable-line react-hooks/exhaustive-deps
 
   function resetForm() {
     setFullName(''); setCedula(''); setPhone(''); setSpecialty('Medicina General')
@@ -70,6 +81,7 @@ export default function MedicalProvidersPage() {
 
   async function handleSave() {
     if (!fullName.trim() || !phone.trim()) return
+    setSaveError('')
     setSaving(true)
     const payload = {
       full_name: fullName.trim(), cedula: cedula.trim() || null,
@@ -77,9 +89,12 @@ export default function MedicalProvidersPage() {
     }
 
     if (editingId) {
-      await supabase.from('medical_providers').update(payload).eq('id', editingId)
+      const { error } = await supabase.from('medical_providers').update(payload).eq('id', editingId)
+      if (error) { setSaveError(`Error: ${error.message}`); setSaving(false); return }
     } else {
-      await supabase.from('medical_providers').insert({ ...payload, is_active: true })
+      if (!companyId) { setSaveError('No se pudo detectar tu empresa. Recarga la página.'); setSaving(false); return }
+      const { error } = await supabase.from('medical_providers').insert({ ...payload, company_id: companyId, is_active: true })
+      if (error) { setSaveError(`Error: ${error.message}`); setSaving(false); return }
     }
     await fetchProviders()
     resetForm()
@@ -131,27 +146,32 @@ export default function MedicalProvidersPage() {
             <button onClick={resetForm} className="text-slate-400 hover:text-slate-600"><X className="w-4 h-4" /></button>
           </div>
           <div className="p-5 space-y-4">
+            {saveError && (
+              <div className="bg-red-50 border border-red-200 text-red-700 px-3 py-2 rounded-lg text-sm">
+                ⚠️ {saveError}
+              </div>
+            )}
             <div className="grid grid-cols-2 gap-3">
               <div className="col-span-2">
                 <label className="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">Nombre Completo *</label>
                 <input value={fullName} onChange={e => setFullName(e.target.value)} placeholder="Dr. Juan Pérez"
-                  className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-emerald-500 outline-none" />
+                  className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:ring-2 focus:ring-emerald-500 outline-none" />
               </div>
               <div>
                 <label className="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">Cédula Profesional</label>
                 <input value={cedula} onChange={e => setCedula(e.target.value)} placeholder="12345678"
-                  className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-emerald-500 outline-none" />
+                  className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:ring-2 focus:ring-emerald-500 outline-none" />
               </div>
               <div>
                 <label className="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">Teléfono *</label>
                 <input value={phone} onChange={e => setPhone(e.target.value)} placeholder="55XXXXXXXX" type="tel"
-                  className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-emerald-500 outline-none" />
+                  className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:ring-2 focus:ring-emerald-500 outline-none" />
               </div>
               <div className="col-span-2">
                 <label className="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">Especialidad</label>
                 <select value={specialty} onChange={e => setSpecialty(e.target.value)}
-                  className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-emerald-500 outline-none">
-                  {SPECIALTY_OPTIONS.map(s => <option key={s}>{s}</option>)}
+                  className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-900 focus:ring-2 focus:ring-emerald-500 outline-none">
+                  {SPECIALTY_OPTIONS.map(s => <option key={s} className="text-slate-900">{s}</option>)}
                 </select>
               </div>
               <div className="col-span-2">
