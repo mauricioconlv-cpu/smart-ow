@@ -8,6 +8,7 @@ import {
   AlertTriangle, Loader2, Activity, MessageSquare, Send
 } from 'lucide-react'
 import { SignaturePad } from '@/components/ui/SignaturePad'
+import { MedicalReportPrint } from '@/components/medical/MedicalReportPrint'
 
 // ── Tipos ──────────────────────────────────────────────────────────────────
 const TYPE_CFG: Record<string, { label: string; color: string; bg: string; icon: React.ReactNode }> = {
@@ -42,7 +43,7 @@ export default function DoctorAccessPage() {
   const { token } = useParams<{ token: string }>()
 
   // Auth state
-  const [phase, setPhase] = useState<'pin'|'service'|'expired'|'error'>('pin')
+  const [phase, setPhase] = useState<'pin'|'service'|'expired'|'error'|'printing'>('pin')
   const [pin, setPin] = useState(['','','',''])
   const [pinError, setPinError] = useState('')
   const [verifying, setVerifying] = useState(false)
@@ -262,7 +263,7 @@ export default function DoctorAccessPage() {
       setService((prev: any) => ({ ...prev, status: next }))
       if (next === 'concluido') {
         localStorage.removeItem(`smart_tow_doc_${token}`)
-        setPhase('expired') // Link ya no sirve
+        setPhase('printing') // Mostrar PDF única ocasión
       } else {
         showSuccess(`✓ ${STATUS_LABELS[next]}`)
       }
@@ -442,6 +443,28 @@ export default function DoctorAccessPage() {
               ? 'El servicio fue marcado como concluido. Este link ya no está activo. ¡Gracias!'
               : 'Este link ha expirado o fue desactivado. Contacta al despachador para más información.'}
           </p>
+        </div>
+      </div>
+    )
+  }
+
+  // ── Vista de Impresión Única Ocasión ──────────────────────────────────────
+  if (phase === 'printing' && service) {
+    return (
+      <div className="min-h-screen bg-slate-100 p-4 pb-20 print:p-0 print:bg-white flex flex-col items-center">
+        <div className="w-full max-w-4xl mb-4 bg-yellow-50 border border-yellow-200 text-yellow-800 p-4 rounded-xl text-center text-sm font-bold shadow-sm print:hidden">
+          ¡Atención Doctor! El servicio ha concluido. Este PDF estará disponible ÚNICA OCASIÓN en esta página para que lo guardes o imprimas. Si cierras esta pestaña, no podrás volver a abrirlo.
+          <div className="mt-3">
+            <button
+              onClick={() => window.print()}
+              className="bg-emerald-600 text-white px-6 py-2 rounded-lg font-bold hover:bg-emerald-700 shadow-md transition-colors"
+            >
+              🖨️ Descargar o Imprimir Expediente
+            </button>
+          </div>
+        </div>
+        <div className="w-full bg-white shadow-xl rounded-2xl overflow-hidden print:shadow-none print:rounded-none">
+          <MedicalReportPrint service={service} />
         </div>
       </div>
     )

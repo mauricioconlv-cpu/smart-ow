@@ -98,7 +98,14 @@ export default function MedicalServiceDetailPage() {
     const ch = supabase.channel(`medical_detail_${id}`)
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'medical_services', filter: `id=eq.${id}` }, fetchService)
       .subscribe()
-    return () => { supabase.removeChannel(ch) }
+
+    // Polling de chat cada 5s por si el socket tiene lag
+    const interval = setInterval(fetchService, 5000)
+
+    return () => { 
+      supabase.removeChannel(ch)
+      clearInterval(interval)
+    }
   }, [fetchService, id]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const canSeeCosts = myProfile?.role === 'admin' || myProfile?.role === 'superadmin' || myProfile?.is_supervisor || (myProfile?.supervisor_level ?? 0) >= 1
@@ -146,7 +153,11 @@ export default function MedicalServiceDetailPage() {
       timestamp: new Date().toISOString()
     })
     const { error } = await supabase.from('medical_services').update({ chat_messages: messages }).eq('id', id)
-    if (!error) setChatMessage('')
+    if (!error) {
+      setChatMessage('')
+      setService((prev: any) => ({ ...prev, chat_messages: messages }))
+      fetchService() // redundant fetch just in case
+    }
     else {
       setMessage({ text: 'Error al enviar mensaje.', ok: false })
       setTimeout(() => setMessage(null), 3000)
