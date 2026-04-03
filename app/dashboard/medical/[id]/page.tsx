@@ -7,7 +7,7 @@ import dynamic from 'next/dynamic'
 import {
   ArrowLeft, Stethoscope, Package, Video, User, Phone, MapPin,
   Clock, DollarSign, FileText, Camera, CheckCircle2, AlertTriangle,
-  ChevronRight, Eye, EyeOff
+  ChevronRight, Eye, EyeOff, Key, Copy
 } from 'lucide-react'
 
 const LiveMap = dynamic(() => import('../../components/Map'), { ssr: false, loading: () => <div className="h-full w-full bg-slate-100 animate-pulse rounded-xl" /> })
@@ -46,6 +46,7 @@ export default function MedicalServiceDetailPage() {
   const [showCosts, setShowCosts]     = useState(false)
   const [notes, setNotes]             = useState('')
   const [message, setMessage]         = useState<{ text: string; ok: boolean } | null>(null)
+  const [tokenInfo, setTokenInfo]     = useState<{ link: string; pin: string } | null>(null)
 
   const fetchService = useCallback(async () => {
     const { data } = await supabase
@@ -77,12 +78,25 @@ export default function MedicalServiceDetailPage() {
       }
     })
 
+    // Fetch Token Info si existe
+    supabase.from('medical_service_tokens')
+      .select('token, pin')
+      .eq('service_id', id)
+      .eq('is_active', true)
+      .single()
+      .then(({ data }) => {
+        if (data) {
+          const siteUrl = typeof window !== 'undefined' ? window.location.origin : 'https://smart-tow.vercel.app'
+          setTokenInfo({ link: `${siteUrl}/doc/${data.token}`, pin: data.pin })
+        }
+      })
+
     // Realtime: actualizar cuando el doctor cambia status/GPS
     const ch = supabase.channel(`medical_detail_${id}`)
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'medical_services', filter: `id=eq.${id}` }, fetchService)
       .subscribe()
     return () => { supabase.removeChannel(ch) }
-  }, [fetchService]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [fetchService, id]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const canSeeCosts = myProfile?.role === 'admin' || myProfile?.role === 'superadmin' || myProfile?.is_supervisor || (myProfile?.supervisor_level ?? 0) >= 1
 
@@ -172,6 +186,33 @@ export default function MedicalServiceDetailPage() {
           </div>
         </div>
       </div>
+
+      {/* Accesos del Doctor */}
+      {tokenInfo && !isClosed && (
+        <div className="bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200 rounded-2xl shadow-sm overflow-hidden">
+          <div className="flex items-center gap-2 px-4 py-3 border-b border-amber-100 bg-amber-100/50">
+            <Key className="w-4 h-4 text-amber-600" />
+            <span className="font-bold text-sm text-amber-800 uppercase tracking-wide">Acceso para el Doctor</span>
+          </div>
+          <div className="p-4 flex flex-col md:flex-row gap-4 items-center">
+            <div className="flex-1 w-full relative">
+              <p className="text-[10px] font-bold text-amber-700 uppercase tracking-wider mb-1">Link del servicio</p>
+              <div className="flex items-center gap-1">
+                <input readOnly value={tokenInfo.link} className="flex-1 bg-white border border-amber-200 text-xs py-2 px-3 rounded-lg font-mono text-slate-600 outline-none w-full" />
+                <button onClick={() => { navigator.clipboard.writeText(tokenInfo.link); setMessage({text:'Link copiado', ok:true}); setTimeout(()=>setMessage(null), 2000) }} className="p-2 bg-amber-500 hover:bg-amber-600 text-white rounded-lg transition-colors flex shrink-0 items-center justify-center" aria-label="Copiar Link">
+                  <Copy className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+            <div className="w-full md:w-auto shrink-0 flex flex-col items-center">
+              <p className="text-[10px] items-center font-bold text-amber-700 uppercase tracking-wider mb-1 text-center w-full md:text-left">PIN DE ACCESO</p>
+              <div className="bg-white border border-amber-200 py-1.5 px-5 rounded-lg text-center shadow-sm">
+                <span className="font-black text-xl text-amber-600 tracking-[0.2em]">{tokenInfo.pin}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Mapa en vivo (solo si hay GPS del doctor) */}
       {service.service_type !== 'telemedicina' && (
