@@ -1,4 +1,4 @@
-import { Users, Map, Settings, LogOut, FileText, Truck, Radio } from 'lucide-react'
+import { Users, Map, Settings, LogOut, FileText, Truck, Radio, Stethoscope } from 'lucide-react'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
@@ -50,12 +50,13 @@ export default async function DashboardLayout({
   }
 
   const navLinks = [
-    { href: '/dashboard',         icon: Map,      label: 'Monitor en Vivo', live: true },
-    { href: '/dashboard/services',icon: Radio,     label: 'Servicios' },
-    { href: '/dashboard/reports', icon: FileText,  label: 'Reportes e Historial' },
-    { href: '/dashboard/clients', icon: Users,     label: 'Aseguradoras' },
-    { href: '/dashboard/fleet',   icon: Truck,     label: 'Flotilla de Grúas' },
-    { href: '/dashboard/users',   icon: Users,     label: 'Usuarios y Empleados' },
+    { href: '/dashboard',         icon: Map,         label: 'Monitor en Vivo', live: true },
+    { href: '/dashboard/services',icon: Radio,        label: 'Servicios' },
+    { href: '/dashboard/medical', icon: Stethoscope,  label: 'Servicios Médicos' },
+    { href: '/dashboard/reports', icon: FileText,     label: 'Reportes e Historial' },
+    { href: '/dashboard/clients', icon: Users,        label: 'Aseguradoras' },
+    { href: '/dashboard/fleet',   icon: Truck,        label: 'Flotilla de Grúas' },
+    { href: '/dashboard/users',   icon: Users,        label: 'Usuarios y Empleados' },
   ]
 
   if (profile?.role === 'admin' || profile?.is_supervisor) {
