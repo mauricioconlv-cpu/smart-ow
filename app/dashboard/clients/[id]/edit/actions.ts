@@ -29,16 +29,11 @@ export async function updateClientWithRates(formData: FormData): Promise<void> {
   // 2. Construir los costos
   const costs: Record<string, number> = {}
 
-  // Grúas (A/B/C/D) + Auxilios Viales (mismo esquema de columnas)
-  for (const t of ['a', 'b', 'c', 'd', 'paso_corriente', 'cambio_llanta', 'gasolina']) {
+  // Grúas (A/B/C/D) + Auxilios Viales + Servicios Médicos
+  for (const t of ['a', 'b', 'c', 'd', 'paso_corriente', 'cambio_llanta', 'gasolina', 'medico_domicilio', 'reparto_medicamento', 'telemedicina']) {
     costs[`costo_local_tipo_${t}`] = parseFloat(formData.get(`costo_local_tipo_${t}`) as string) || 0
     costs[`costo_bande_tipo_${t}`] = parseFloat(formData.get(`costo_bande_tipo_${t}`) as string) || 0
     costs[`costo_km_tipo_${t}`]    = parseFloat(formData.get(`costo_km_tipo_${t}`)    as string) || 0
-  }
-
-  // Servicios Médicos
-  for (const field of ['costo_medico_domicilio', 'costo_reparto_medicamento', 'costo_telemedicina']) {
-    costs[field] = parseFloat(formData.get(field) as string) || 0
   }
 
   // Costos adicionales y herramientas

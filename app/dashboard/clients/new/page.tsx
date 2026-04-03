@@ -50,7 +50,7 @@ export default function NewClientPage() {
       return
     }
 
-    // 2. Construir costos — Grúas + Auxilios Viales
+    // 2. Construir costos — Grúas + Auxilios Viales + Servicios Médicos
     const costs: Record<string, number> = {}
 
     // Actualizar datos de perfil del cliente
@@ -60,15 +60,11 @@ export default function NewClientPage() {
       coordinator_phone: (formData.get('coordinator_phone') as string)?.trim() || null,
       cabina_telefono:   (formData.get('cabina_telefono')   as string)?.trim() || null,
     }).eq('id', newClient.id)
-    for (const t of ['a', 'b', 'c', 'd', 'paso_corriente', 'cambio_llanta', 'gasolina']) {
+
+    for (const t of ['a', 'b', 'c', 'd', 'paso_corriente', 'cambio_llanta', 'gasolina', 'medico_domicilio', 'reparto_medicamento', 'telemedicina']) {
       costs[`costo_local_tipo_${t}`] = parseFloat(formData.get(`costo_local_tipo_${t}`) as string) || 0
       costs[`costo_bande_tipo_${t}`] = parseFloat(formData.get(`costo_bande_tipo_${t}`) as string) || 0
       costs[`costo_km_tipo_${t}`]    = parseFloat(formData.get(`costo_km_tipo_${t}`)    as string) || 0
-    }
-
-    // Servicios Médicos
-    for (const field of ['costo_medico_domicilio', 'costo_reparto_medicamento', 'costo_telemedicina']) {
-      costs[field] = parseFloat(formData.get(field) as string) || 0
     }
 
     // Costos adicionales
@@ -238,20 +234,36 @@ export default function NewClientPage() {
             <Stethoscope className="h-5 w-5 text-emerald-500" /> Servicios Médicos
           </h3>
           <p className="text-xs text-slate-500 mb-4">
-            Tarifa negociada para cada tipo de servicio médico cubierto por esta aseguradora.
+            Tarifa negociada para cada tipo de servicio médico cubierto. El banderazo y $/km aplican solo si el servicio requiere traslado foráneo o kilometraje extra.
           </p>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            {[
-              { name: 'costo_medico_domicilio',    label: '🩺 Médico a Domicilio',      desc: 'Consulta presencial en el domicilio' },
-              { name: 'costo_reparto_medicamento', label: '📦 Reparto de Medicamento',   desc: 'Entrega de medicamentos a domicilio' },
-              { name: 'costo_telemedicina',        label: '📹 Telemedicina',             desc: 'Consulta médica en línea' },
-            ].map(({ name, label, desc }) => (
-              <div key={name} className="bg-emerald-50 rounded-xl p-4 border border-emerald-100">
-                <p className="text-sm font-bold text-emerald-800 mb-0.5">{label}</p>
-                <p className="text-xs text-emerald-600 mb-2">{desc}</p>
-                <CurrencyInput name={name} />
-              </div>
-            ))}
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b-2 border-slate-200">
+                  <th className="text-left pb-3 pr-6 text-xs font-bold text-slate-500 uppercase w-48">Servicio Médico</th>
+                  <th className="text-left pb-3 pr-4 text-xs font-bold text-slate-500 uppercase">Tarifa Local / Base</th>
+                  <th className="text-left pb-3 pr-4 text-xs font-bold text-slate-500 uppercase">Banderazo (Foráneo)</th>
+                  <th className="text-left pb-3 text-xs font-bold text-slate-500 uppercase">$/Km (Foráneo)</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {([
+                  { key: 'medico_domicilio',    label: '🩺 Médico Domicilio',    desc: 'Consulta presencial', color: 'text-emerald-700 bg-emerald-100' },
+                  { key: 'reparto_medicamento', label: '📦 Reparto Medicamento', desc: 'Entrega a domicilio', color: 'text-teal-700 bg-teal-100' },
+                  { key: 'telemedicina',        label: '📹 Telemedicina',        desc: 'Consulta en línea',   color: 'text-cyan-700 bg-cyan-100' },
+                ] as const).map(({ key, label, desc, color }) => (
+                  <tr key={key}>
+                    <td className="py-4 pr-6">
+                      <span className={`inline-flex items-center px-2.5 py-1 rounded-lg font-black text-sm ${color}`}>{label}</span>
+                      <span className="block text-xs text-slate-400 mt-1 pl-1">{desc}</span>
+                    </td>
+                    <td className="py-4 pr-4"><CurrencyInput name={`costo_local_tipo_${key}`} /></td>
+                    <td className="py-4 pr-4"><CurrencyInput name={`costo_bande_tipo_${key}`} /></td>
+                    <td className="py-4"><CurrencyInput name={`costo_km_tipo_${key}`} /></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         </div>
 

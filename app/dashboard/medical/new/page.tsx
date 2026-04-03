@@ -6,7 +6,8 @@ import { createClient } from '@/lib/supabase/client'
 import {
   Stethoscope, Package, Video, ArrowLeft, ArrowRight, Plus,
   User, Phone, MapPin, ClipboardList, DollarSign, Calendar,
-  CheckCircle2, Copy, Share2, ChevronDown, ChevronUp
+  CheckCircle2, Copy, Share2, ChevronDown, ChevronUp,
+  Lock, Unlock, AlertTriangle
 } from 'lucide-react'
 
 // ── Tipos ──────────────────────────────────────────────────────────────────
@@ -61,13 +62,27 @@ export default function NewMedicalServicePage() {
   const [aseguradora, setAseguradora]     = useState('')
   const [expediente, setExpediente]       = useState('')
   const [scheduledAt, setScheduledAt]     = useState('')
-  const [cobroCliente, setCobroCliente]   = useState('')
+  
+  // Costos automatizados
+  const [kilometros, setKilometros]       = useState('')
+  const [costoCalculado, setCostoCalculado] = useState(0)
+  
+  // Candado de costo tabulado
+  const [isCostLocked, setIsCostLocked]       = useState(true)
+  const [showUnlockForm, setShowUnlockForm]   = useState(false)
+  const [costOverride, setCostOverride]       = useState('')
+  const [overrideReason, setOverrideReason]   = useState('')
+  const [costWasOverridden, setCostWasOverridden] = useState(false)
+  const [costoOriginal, setCostoOriginal]     = useState(0)
 
   // Costos internos (solo admin/superadmin verán esto en la UI de detalle)
   const [costoPago, setCostoPago]         = useState('')  // costo_pago_proveedor
   const [costoMedicamento, setCostoMedicamento] = useState('')
   const [costoEnvio, setCostoEnvio]       = useState('')
   const [costoConsulta, setCostoConsulta] = useState('')
+
+  // Catálogos
+  const [clients, setClients]             = useState<any[]>([])
 
   // Doctor
   const [providers, setProviders]         = useState<any[]>([])
@@ -84,7 +99,7 @@ export default function NewMedicalServicePage() {
   const [error, setError]                 = useState('')
   const [copied, setCopied]               = useState<'link'|'pin'|null>(null)
 
-  // Cargar directorio de médicos
+  // Cargar catálogos
   useEffect(() => {
     supabase
       .from('medical_providers')
@@ -92,7 +107,65 @@ export default function NewMedicalServicePage() {
       .eq('is_active', true)
       .order('full_name')
       .then(({ data }) => { if (data) setProviders(data) })
+      
+    supabase
+      .from('clients')
+      .select('id, name, pricing_rules(*)')
+      .order('name')
+      .then(({ data }) => { if (data) setClients(data) })
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Resetear candado al cambiar parámetros
+  useEffect(() => {
+    setIsCostLocked(true)
+    setShowUnlockForm(false)
+    setCostOverride('')
+    setOverrideReason('')
+    setCostWasOverridden(false)
+  }, [aseguradora, serviceType])
+
+  // Motor de cotización inteligente
+  useEffect(() => {
+    if (!aseguradora || !serviceType || aseguradora === 'particular') {
+      setCostoCalculado(0)
+      setCostoOriginal(0)
+      return
+    }
+
+    const client = clients.find(c => c.id === aseguradora)
+    const rule = client?.pricing_rules?.[0]
+    if (!rule) {
+      setCostoCalculado(0)
+      setCostoOriginal(0)
+      return
+    }
+
+    let cLocal = 0, cBande = 0, cKm = 0
+    if (serviceType === 'medico_domicilio') {
+      cLocal = Number(rule.costo_local_tipo_medico_domicilio || 0)
+      cBande = Number(rule.costo_bande_tipo_medico_domicilio || 0)
+      cKm    = Number(rule.costo_km_tipo_medico_domicilio || 0)
+    } else if (serviceType === 'reparto_medicamento') {
+      cLocal = Number(rule.costo_local_tipo_reparto_medicamento || 0)
+      cBande = Number(rule.costo_bande_tipo_reparto_medicamento || 0)
+      cKm    = Number(rule.costo_km_tipo_reparto_medicamento || 0)
+    } else if (serviceType === 'telemedicina') {
+      cLocal = Number(rule.costo_local_tipo_telemedicina || 0)
+      cBande = Number(rule.costo_bande_tipo_telemedicina || 0)
+      cKm    = Number(rule.costo_km_tipo_telemedicina || 0)
+    }
+
+    const kmStr = parseFloat(kilometros) || 0
+    let total = 0
+    if (kmStr > 0) {
+      total = cBande + (cKm * kmStr)
+    } else {
+      total = cLocal
+    }
+
+    setCostoCalculado(total)
+    setCostoOriginal(total)
+  }, [aseguradora, serviceType, kilometros, clients])
 
   const selectedCfg = SERVICE_TYPES.find(t => t.key === serviceType)
 
@@ -111,10 +184,15 @@ export default function NewMedicalServicePage() {
         patientPhone:   patientPhone.trim(),
         patientAddress: patientAddress.trim(),
         symptoms:       symptoms.trim(),
-        aseguradora:    aseguradora.trim(),
+        aseguradora:    aseguradora === 'particular' || !aseguradora ? null : clients.find(c => c.id === aseguradora)?.name,
         expediente:     expediente.trim(),
         scheduledAt:    scheduledAt || null,
-        cobroCliente:   parseFloat(cobroCliente) || 0,
+        cobroCliente:   aseguradora === 'particular' 
+                          ? (parseFloat(costOverride) || 0) 
+                          : costWasOverridden ? (parseFloat(costOverride) || costoCalculado) : costoCalculado,
+        costWasOverridden,
+        overrideReason,
+        costoOriginal,
         costoPago:      parseFloat(costoPago) || 0,
         costoMedicamento: parseFloat(costoMedicamento) || 0,
         costoEnvio:     parseFloat(costoEnvio) || 0,
@@ -319,9 +397,36 @@ export default function NewMedicalServicePage() {
             />
           </div>
           <div>
-            <Label>Aseguradora (opcional)</Label>
-            <Input value={aseguradora} onChange={e => setAseguradora(e.target.value)} placeholder="Ej: AXA Seguros" />
+            <Label>Aseguradora o Cliente</Label>
+            <select
+              value={aseguradora}
+              onChange={e => setAseguradora(e.target.value)}
+              className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-900 focus:ring-2 focus:ring-emerald-500 outline-none"
+            >
+              <option value="">Seleccione un cliente...</option>
+              <option value="particular">Público Particular (Libre)</option>
+              <optgroup label="Aseguradoras">
+                {clients.map(c => (
+                  <option key={c.id} value={c.id}>{c.name}</option>
+                ))}
+              </optgroup>
+            </select>
           </div>
+          {serviceType !== 'telemedicina' && aseguradora !== 'particular' && aseguradora !== '' && (
+            <div>
+              <Label>Kilómetros Foráneos (opcional)</Label>
+              <div className="relative">
+                <input
+                  type="number" min="0" step="1"
+                  value={kilometros}
+                  onChange={e => setKilometros(e.target.value)}
+                  placeholder="Ej: 45"
+                  className="w-full bg-white border border-slate-300 rounded-lg pl-3 pr-10 py-2 text-sm text-slate-900 focus:ring-2 focus:ring-emerald-500 outline-none"
+                />
+                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm">km</span>
+              </div>
+            </div>
+          )}
           <div>
             <Label>Fecha / Hora de Cita</Label>
             <input
@@ -411,19 +516,116 @@ export default function NewMedicalServicePage() {
             <p className="text-xs text-amber-600 mt-0.5">Solo visible para admin y supervisor</p>
           </div>
 
-          {/* Cobro al cliente */}
-          <div>
+          {/* Cobro al cliente con Candado Automatizado */}
+          <div className="flex flex-col">
             <Label>Cobro al cliente / aseguradora</Label>
-            <div className="relative">
-              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm">$</span>
-              <input
-                type="number" min="0" step="0.01"
-                value={cobroCliente}
-                onChange={e => setCobroCliente(e.target.value)}
-                placeholder="0.00"
-                className="w-full border border-slate-300 rounded-lg pl-7 pr-3 py-2 text-sm text-slate-800 focus:ring-2 focus:ring-emerald-500 outline-none"
-              />
-            </div>
+            {aseguradora === 'particular' || !aseguradora ? (
+              <div className="relative mt-1">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm">$</span>
+                <input
+                  type="number" min="0" step="0.01"
+                  value={costOverride}
+                  onChange={e => setCostOverride(e.target.value)}
+                  placeholder="0.00 (Particular)"
+                  className="w-full border border-slate-300 rounded-lg pl-7 pr-3 py-2 text-sm font-bold text-emerald-700 bg-white shadow-sm focus:ring-2 focus:ring-emerald-500 outline-none"
+                />
+              </div>
+            ) : (
+              <div className="mt-1 flex flex-col gap-2">
+                <div className="flex items-center gap-3">
+                  <div className="flex-1 bg-white border border-slate-200 rounded-lg px-3 py-2 shadow-sm">
+                    {costWasOverridden ? (
+                      <div>
+                        <p className="text-xl font-black text-amber-500">
+                          {new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(parseFloat(costOverride) || 0)}
+                        </p>
+                        <p className="text-xs text-slate-400 line-through">
+                          Tabulado: {new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(costoOriginal)}
+                        </p>
+                      </div>
+                    ) : (
+                      <p className="text-xl font-black text-emerald-600">
+                        {new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(costoCalculado)}
+                      </p>
+                    )}
+                  </div>
+                  
+                  {/* Toggle Candado */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (costWasOverridden) {
+                        setCostWasOverridden(false)
+                        setCostOverride('')
+                        setOverrideReason('')
+                        setIsCostLocked(true)
+                        setShowUnlockForm(false)
+                      } else {
+                        setShowUnlockForm(v => !v)
+                      }
+                    }}
+                    className={`flex flex-col items-center justify-center p-2 rounded-lg border text-[10px] font-bold uppercase transition-all min-w-[70px] ${
+                      costWasOverridden
+                        ? 'border-amber-200 bg-amber-50 text-amber-600 hover:bg-amber-100'
+                        : 'border-slate-200 bg-slate-50 text-slate-500 hover:bg-slate-100'
+                    }`}
+                  >
+                    {costWasOverridden ? <Unlock className="w-5 h-5 mb-1 text-amber-500" /> : <Lock className="w-5 h-5 mb-1 text-slate-500" />}
+                    {costWasOverridden ? 'Revertir' : 'Modificar'}
+                  </button>
+                </div>
+                
+                {/* Formulario de Modificación */}
+                {showUnlockForm && !costWasOverridden && (
+                  <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 space-y-2 mt-1">
+                    <div className="flex items-center gap-1.5 text-amber-700 text-xs font-bold uppercase">
+                      <AlertTriangle className="w-3.5 h-3.5" />
+                      Modificar costo tabulado
+                    </div>
+                    <div className="relative">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm">$</span>
+                      <input
+                        type="number" min="0" step="0.01" placeholder="Nuevo monto..."
+                        value={costOverride}
+                        onChange={e => setCostOverride(e.target.value)}
+                        className="w-full pl-7 pr-3 py-2 bg-white border border-amber-300 rounded-lg text-slate-800 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-amber-500"
+                      />
+                    </div>
+                    <textarea
+                      placeholder="Motivo de la modificación (requerido)..."
+                      value={overrideReason}
+                      onChange={e => setOverrideReason(e.target.value)}
+                      rows={2}
+                      className="w-full px-3 py-2 bg-white border border-amber-300 rounded-lg text-slate-800 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-amber-500 placeholder:text-slate-400"
+                    />
+                    <div className="flex gap-2">
+                      <button type="button" onClick={() => setShowUnlockForm(false)}
+                        className="flex-1 py-1.5 rounded-lg bg-white border border-slate-300 text-slate-600 text-xs font-semibold hover:bg-slate-50">
+                        Cancelar
+                      </button>
+                      <button type="button" disabled={!costOverride || !overrideReason.trim()}
+                        onClick={() => {
+                          if (!costOverride || !overrideReason.trim()) return
+                          setCostWasOverridden(true)
+                          setIsCostLocked(false)
+                          setShowUnlockForm(false)
+                        }}
+                        className="flex-1 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-600 disabled:opacity-40 text-white text-xs font-bold">
+                        Aplicar
+                      </button>
+                    </div>
+                  </div>
+                )}
+                
+                {/* Labels informativas */}
+                {!costWasOverridden && costoCalculado > 0 && (
+                  <p className="text-[10px] text-emerald-600 font-medium">✨ Costo calculado por tabulador de {clients.find(c=>c.id===aseguradora)?.name}</p>
+                )}
+                {costWasOverridden && (
+                  <p className="text-[10px] text-amber-600 font-medium whitespace-break-spaces">⚠️ Modificado manualmente. El motivo se grabará en notas.</p>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Campos específicos por tipo */}

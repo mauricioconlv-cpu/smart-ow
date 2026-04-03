@@ -41,6 +41,7 @@ export async function POST(req: NextRequest) {
       symptoms, aseguradora, expediente, scheduledAt,
       cobroCliente, costoPago, costoMedicamento, costoEnvio, costoConsulta,
       providerId, newDoctor,
+      costWasOverridden, overrideReason, costoOriginal, costOverride
     } = body
 
     if (!serviceType || !patientName?.trim()) {
@@ -73,6 +74,16 @@ export async function POST(req: NextRequest) {
       finalProviderId = newProv.id
     }
 
+    // Si hay modificación de costo justificada, la agregamos a las notas
+    let initialNotes = null
+    if (costWasOverridden && overrideReason) {
+      initialNotes = `[${new Date().toLocaleString('es-MX', { timeZone: 'America/Mexico_City' })}] ⚠️ COSTO TABULADO MODIFICADO
+• Original: $${costoOriginal}
+• Nuevo Costo: $${parseFloat(costOverride)}
+• Usuario: ${user.email}
+• Motivo: ${overrideReason}`
+    }
+
     // 2. Crear el servicio médico
     // El trigger set_medical_folio asigna el folio y folio_prefix automáticamente
     const { data: service, error: svcErr } = await admin
@@ -97,6 +108,7 @@ export async function POST(req: NextRequest) {
         costo_consulta:      costoConsulta || 0,
         doctor_provider_id:  finalProviderId,
         created_by:          user.id,
+        follow_up_notes:     initialNotes,
       })
       .select('id, folio, folio_prefix')
       .single()
