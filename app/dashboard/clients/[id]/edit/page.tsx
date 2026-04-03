@@ -45,7 +45,7 @@ export default async function EditClientPage(props: {
 
   const { data: client } = await supabase
     .from('clients')
-    .select('id, name, pricing_rules(*), costo_muerto_activo, costo_muerto_umbral_min, costo_muerto_pct')
+    .select('id, name, email, coordinator_name, coordinator_phone, cabina_telefono, pricing_rules(*), costo_muerto_activo, costo_muerto_umbral_min, costo_muerto_pct')
     .eq('id', id)
     .single()
 
@@ -71,11 +71,39 @@ export default async function EditClientPage(props: {
         {/* ── Información General ──────────────────────────────── */}
         <div className="bg-white shadow rounded-lg p-6">
           <h3 className="text-lg font-semibold text-gray-900 mb-4">Información General</h3>
-          <label htmlFor="name" className="block text-sm font-medium text-gray-900 mb-1">
-            Nombre de la Aseguradora o Cliente
-          </label>
-          <input type="text" name="name" id="name" required defaultValue={client.name}
-            className="block w-full rounded-md border-0 py-2.5 px-3 text-gray-900 ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-blue-600 text-sm shadow-sm bg-white" />
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="sm:col-span-2">
+              <label htmlFor="name" className="block text-sm font-medium text-gray-900 mb-1">
+                Nombre de la Aseguradora o Cliente *
+              </label>
+              <input type="text" name="name" id="name" required defaultValue={client.name}
+                className="block w-full rounded-md border-0 py-2.5 px-3 text-gray-900 ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-blue-600 text-sm shadow-sm bg-white" />
+            </div>
+            <div>
+              <label htmlFor="email" className="block text-sm font-medium text-gray-900 mb-1">Correo Electrónico</label>
+              <input type="email" name="email" id="email" defaultValue={(client as any).email ?? ''}
+                placeholder="contacto@aseguradora.com"
+                className="block w-full rounded-md border-0 py-2.5 px-3 text-gray-900 ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-blue-600 text-sm shadow-sm bg-white" />
+            </div>
+            <div>
+              <label htmlFor="cabina_telefono" className="block text-sm font-medium text-gray-900 mb-1">Teléfono Cabina de Seguimiento</label>
+              <input type="tel" name="cabina_telefono" id="cabina_telefono" defaultValue={(client as any).cabina_telefono ?? ''}
+                placeholder="55XXXXXXXX"
+                className="block w-full rounded-md border-0 py-2.5 px-3 text-gray-900 ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-blue-600 text-sm shadow-sm bg-white" />
+            </div>
+            <div>
+              <label htmlFor="coordinator_name" className="block text-sm font-medium text-gray-900 mb-1">Nombre del Coordinador</label>
+              <input type="text" name="coordinator_name" id="coordinator_name" defaultValue={(client as any).coordinator_name ?? ''}
+                placeholder="Ej. Lic. Roberto Sánchez"
+                className="block w-full rounded-md border-0 py-2.5 px-3 text-gray-900 ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-blue-600 text-sm shadow-sm bg-white" />
+            </div>
+            <div>
+              <label htmlFor="coordinator_phone" className="block text-sm font-medium text-gray-900 mb-1">Contacto del Coordinador</label>
+              <input type="tel" name="coordinator_phone" id="coordinator_phone" defaultValue={(client as any).coordinator_phone ?? ''}
+                placeholder="55XXXXXXXX"
+                className="block w-full rounded-md border-0 py-2.5 px-3 text-gray-900 ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-blue-600 text-sm shadow-sm bg-white" />
+            </div>
+          </div>
         </div>
 
         {/* ── Sección 1: Grúas / Arrastre ─────────────────────── */}

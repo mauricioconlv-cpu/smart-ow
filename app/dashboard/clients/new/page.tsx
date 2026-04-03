@@ -52,6 +52,14 @@ export default function NewClientPage() {
 
     // 2. Construir costos — Grúas + Auxilios Viales
     const costs: Record<string, number> = {}
+
+    // Actualizar datos de perfil del cliente
+    await supabase.from('clients').update({
+      email:             (formData.get('email')             as string)?.trim() || null,
+      coordinator_name:  (formData.get('coordinator_name')  as string)?.trim() || null,
+      coordinator_phone: (formData.get('coordinator_phone') as string)?.trim() || null,
+      cabina_telefono:   (formData.get('cabina_telefono')   as string)?.trim() || null,
+    }).eq('id', newClient.id)
     for (const t of ['a', 'b', 'c', 'd', 'paso_corriente', 'cambio_llanta', 'gasolina']) {
       costs[`costo_local_tipo_${t}`] = parseFloat(formData.get(`costo_local_tipo_${t}`) as string) || 0
       costs[`costo_bande_tipo_${t}`] = parseFloat(formData.get(`costo_bande_tipo_${t}`) as string) || 0
@@ -111,12 +119,40 @@ export default function NewClientPage() {
         {/* Información General */}
         <div className="bg-white shadow rounded-lg p-6">
           <h3 className="text-lg font-semibold text-gray-900 mb-4">Información General</h3>
-          <label htmlFor="name" className="block text-sm font-medium text-gray-900 mb-1">
-            Nombre de la Aseguradora o Cliente
-          </label>
-          <input type="text" name="name" id="name" required
-            className="block w-full rounded-md border-0 py-2.5 px-3 text-gray-900 ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-blue-600 text-sm shadow-sm bg-white"
-            placeholder="Ej. Seguros AXA" />
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="sm:col-span-2">
+              <label htmlFor="name" className="block text-sm font-medium text-gray-900 mb-1">
+                Nombre de la Aseguradora o Cliente *
+              </label>
+              <input type="text" name="name" id="name" required
+                className="block w-full rounded-md border-0 py-2.5 px-3 text-gray-900 ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-blue-600 text-sm shadow-sm bg-white"
+                placeholder="Ej. Seguros AXA" />
+            </div>
+            <div>
+              <label htmlFor="email" className="block text-sm font-medium text-gray-900 mb-1">Correo Electrónico</label>
+              <input type="email" name="email" id="email"
+                className="block w-full rounded-md border-0 py-2.5 px-3 text-gray-900 ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-blue-600 text-sm shadow-sm bg-white"
+                placeholder="contacto@aseguradora.com" />
+            </div>
+            <div>
+              <label htmlFor="cabina_telefono" className="block text-sm font-medium text-gray-900 mb-1">Teléfono Cabina de Seguimiento</label>
+              <input type="tel" name="cabina_telefono" id="cabina_telefono"
+                className="block w-full rounded-md border-0 py-2.5 px-3 text-gray-900 ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-blue-600 text-sm shadow-sm bg-white"
+                placeholder="55XXXXXXXX" />
+            </div>
+            <div>
+              <label htmlFor="coordinator_name" className="block text-sm font-medium text-gray-900 mb-1">Nombre del Coordinador</label>
+              <input type="text" name="coordinator_name" id="coordinator_name"
+                className="block w-full rounded-md border-0 py-2.5 px-3 text-gray-900 ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-blue-600 text-sm shadow-sm bg-white"
+                placeholder="Ej. Lic. Roberto Sánchez" />
+            </div>
+            <div>
+              <label htmlFor="coordinator_phone" className="block text-sm font-medium text-gray-900 mb-1">Contacto del Coordinador</label>
+              <input type="tel" name="coordinator_phone" id="coordinator_phone"
+                className="block w-full rounded-md border-0 py-2.5 px-3 text-gray-900 ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-blue-600 text-sm shadow-sm bg-white"
+                placeholder="55XXXXXXXX" />
+            </div>
+          </div>
         </div>
 
         {/* ── Sección 1: Grúas / Arrastre ──────────────────── */}
