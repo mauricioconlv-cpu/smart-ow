@@ -94,7 +94,10 @@ export async function POST(req: NextRequest) {
 
     // ── Acción: guardar formulario médico ────────────────────────────────
     if (action === 'save_form') {
-      const { diagnostico, tratamiento, medicamento_recetado, signos_vitales, notas_medico } = body
+      const { 
+        diagnostico, tratamiento, medicamento_recetado, signos_vitales, notas_medico,
+        anamnesis, exploracion_fisica, patient_weight, patient_height
+      } = body
 
       await admin
         .from('medical_services')
@@ -104,6 +107,10 @@ export async function POST(req: NextRequest) {
           medicamento_recetado: medicamento_recetado ?? null,
           signos_vitales:       signos_vitales ?? null,
           notas_medico:         notas_medico ?? null,
+          anamnesis:            anamnesis ?? null,
+          exploracion_fisica:   exploracion_fisica ?? null,
+          patient_weight:       patient_weight ?? null,
+          patient_height:       patient_height ?? null,
         })
         .eq('id', tokenRow.service_id)
 
@@ -133,12 +140,14 @@ export async function POST(req: NextRequest) {
 
     // ── Acción: guardar firma digital ────────────────────────────────────
     if (action === 'save_signature') {
-      const { signatureUrl } = body
+      const { signatureUrl, type = 'paciente' } = body
       if (!signatureUrl) return NextResponse.json({ error: 'signatureUrl requerida.' }, { status: 400 })
+
+      const column = type === 'medico' ? 'firma_medico_url' : 'firma_paciente_url'
 
       await admin
         .from('medical_services')
-        .update({ firma_paciente_url: signatureUrl })
+        .update({ [column]: signatureUrl })
         .eq('id', tokenRow.service_id)
 
       return NextResponse.json({ success: true })

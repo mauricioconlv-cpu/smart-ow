@@ -7,6 +7,7 @@ import {
   ChevronRight, CheckCircle2, Camera, FileText, Lock,
   AlertTriangle, Loader2, Activity
 } from 'lucide-react'
+import { SignaturePad } from '@/components/ui/SignaturePad'
 
 // ── Tipos ──────────────────────────────────────────────────────────────────
 const TYPE_CFG: Record<string, { label: string; color: string; bg: string; icon: React.ReactNode }> = {
@@ -61,18 +62,43 @@ export default function DoctorAccessPage() {
   const [tratamiento, setTratamiento]   = useState('')
   const [medicamento, setMedicamento]   = useState('')
   const [notas, setNotas]               = useState('')
+  
+  const [peso, setPeso]                 = useState('')
+  const [talla, setTalla]               = useState('')
+  const [anamnesis, setAnamnesis]       = useState('')
+  const [exploracion, setExploracion]   = useState('')
+
   const [presion, setPresion]           = useState('')
   const [pulso, setPulso]               = useState('')
   const [temperatura, setTemperatura]   = useState('')
+  const [frecResp, setFrecResp]         = useState('')
+  const [spO2, setSpO2]                 = useState('')
+  const [glucosa, setGlucosa]           = useState('')
+  
+  const [firmaPaciente, setFirmaPaciente] = useState<string | null>(null)
+  const [firmaMedico, setFirmaMedico]     = useState<string | null>(null)
 
   const pinRefs = [useRef<HTMLInputElement>(null), useRef<HTMLInputElement>(null), useRef<HTMLInputElement>(null), useRef<HTMLInputElement>(null)]
   const fileInputRef = useRef<HTMLInputElement>(null)
   const gpsIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
+  // ── Auto-Login (Caché) ──────────────────────────────────────────────────
+  useEffect(() => {
+    const cachedPin = localStorage.getItem(`smart_tow_doc_${token}`)
+    if (cachedPin && cachedPin.length === 4) {
+      setPin(cachedPin.split(''))
+      verifyPinRequest(cachedPin)
+    }
+  }, [token])
+
   // ── PIN verification ────────────────────────────────────────────────────
   async function handleVerifyPin() {
     const fullPin = pin.join('')
     if (fullPin.length < 4) return
+    verifyPinRequest(fullPin)
+  }
+
+  async function verifyPinRequest(fullPin: string) {
     setVerifying(true)
     setPinError('')
 
@@ -93,7 +119,10 @@ export default function DoctorAccessPage() {
       setVerifying(false)
 
       if (!res.ok || data.error) {
-        if (res.status === 403 && data.error?.includes('expirado') || data.error?.includes('concluido')) {
+        // Falló el login: Borramos caché
+        localStorage.removeItem(`smart_tow_doc_${token}`)
+        
+        if (res.status === 403 && (data.error?.includes('expirado') || data.error?.includes('concluido'))) {
           setPhase('expired')
         } else {
           setPinError(data.error || 'PIN incorrecto o hubo un error.')
@@ -112,15 +141,24 @@ export default function DoctorAccessPage() {
 
     setService(data.service)
     setAuthHeader(`Bearer ${token}:${fullPin}`)
+    localStorage.setItem(`smart_tow_doc_${token}`, fullPin)
 
     // Pre-fill form if doctor already saved data
     if (data.service.diagnostico)  setDiagnostico(data.service.diagnostico)
     if (data.service.tratamiento)  setTratamiento(data.service.tratamiento)
     if (data.service.medicamento_recetado) setMedicamento(data.service.medicamento_recetado)
     if (data.service.notas_medico) setNotas(data.service.notas_medico)
+    if (data.service.anamnesis) setAnamnesis(data.service.anamnesis)
+    if (data.service.exploracion_fisica) setExploracion(data.service.exploracion_fisica)
+    if (data.service.patient_weight) setPeso(data.service.patient_weight.toString())
+    if (data.service.patient_height) setTalla(data.service.patient_height.toString())
+    if (data.service.firma_paciente_url) setFirmaPaciente(data.service.firma_paciente_url)
+    if (data.service.firma_medico_url) setFirmaMedico(data.service.firma_medico_url)
+    
     if (data.service.signos_vitales) {
       const sv = data.service.signos_vitales
       setPresion(sv.presion ?? ''); setPulso(sv.pulso ?? ''); setTemperatura(sv.temperatura ?? '')
+      setFrecResp(sv.frecResp ?? ''); setSpO2(sv.spO2 ?? ''); setGlucosa(sv.glucosa ?? '')
     }
 
     setPhase('service')
@@ -151,6 +189,15 @@ export default function DoctorAccessPage() {
     if (!service) return
     const next = NEXT_STATUS[service.service_type]?.[service.status]
     if (!next) return
+    
+    if (next === 'concluido') {
+      if (!service.firma_medico_url || !service.firma_paciente_url) {
+        alert('Debes recolectar la firma del médico y del paciente antes de poder finalizar el servicio.')
+        setActiveSection('form')
+        return
+      }
+    }
+
     setAdvancing(true)
     const res = await fetch('/api/medical/doctor-update', {
       method: 'POST',
@@ -161,8 +208,12 @@ export default function DoctorAccessPage() {
     setAdvancing(false)
     if (data.success) {
       setService((prev: any) => ({ ...prev, status: next }))
-      if (next === 'concluido') setPhase('expired') // Link ya no sirve
-      else showSuccess(`✓ ${STATUS_LABELS[next]}`)
+      if (next === 'concluido') {
+        localStorage.removeItem(`smart_tow_doc_${token}`)
+        setPhase('expired') // Link ya no sirve
+      } else {
+        showSuccess(`✓ ${STATUS_LABELS[next]}`)
+      }
     }
   }
 
@@ -174,14 +225,56 @@ export default function DoctorAccessPage() {
       headers: { 'Content-Type': 'application/json', 'Authorization': authHeader },
       body: JSON.stringify({
         action: 'save_form',
+        anamnesis: anamnesis || null,
+        exploracion_fisica: exploracion || null,
+        patient_weight: peso ? parseFloat(peso) : null,
+        patient_height: talla ? parseFloat(talla) : null,
         diagnostico, tratamiento, medicamento_recetado: medicamento, notas_medico: notas,
-        signos_vitales: presion || pulso || temperatura
-          ? { presion: presion || null, pulso: pulso || null, temperatura: temperatura || null }
+        signos_vitales: (presion || pulso || temperatura || frecResp || spO2 || glucosa)
+          ? { 
+              presion: presion || null, 
+              pulso: pulso || null, 
+              temperatura: temperatura || null,
+              frecResp: frecResp || null,
+              spO2: spO2 || null,
+              glucosa: glucosa || null
+            }
           : null,
       }),
     })
     setSaving(false)
     showSuccess('✓ Formulario guardado')
+  }
+
+  // ── Guardar Firma ────────────────────────────────────────────────────────
+  async function saveSignature(dataUrl: string, type: 'medico' | 'paciente') {
+    setSaving(true)
+    try {
+      const res = await fetch(dataUrl)
+      const blob = await res.blob()
+      const filename = `medical/${service.id}/firma_${type}_${Date.now()}.png`
+      const formData = new FormData()
+      formData.append('file', blob)
+      
+      const uploadRes = await fetch(
+        `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/evidence/${filename}`,
+        { method: 'POST', headers: { 'Authorization': `Bearer ${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY}` }, body: formData }
+      )
+      
+      if (uploadRes.ok) {
+        const publicUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/evidence/${filename}`
+        await fetch('/api/medical/doctor-update', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': authHeader },
+          body: JSON.stringify({ action: 'save_signature', signatureUrl: publicUrl, type })
+        })
+        if (type === 'medico') setFirmaMedico(publicUrl)
+        else setFirmaPaciente(publicUrl)
+        setService((prev: any) => ({ ...prev, [type === 'medico' ? 'firma_medico_url' : 'firma_paciente_url']: publicUrl }))
+        showSuccess(`✓ Firma guardada`)
+      }
+    } catch(err) { console.error('Error guardando firma', err) }
+    setSaving(false)
   }
 
   // ── Upload foto ──────────────────────────────────────────────────────────
@@ -405,7 +498,16 @@ export default function DoctorAccessPage() {
           <div className="bg-green-50 border border-green-200 rounded-2xl p-4 text-center">
             <CheckCircle2 className="w-8 h-8 text-green-600 mx-auto mb-2" />
             <p className="font-bold text-green-800">Servicio finalizado</p>
-            <p className="text-green-600 text-sm">Gracias por tu atención.</p>
+            <p className="text-green-600 text-sm mb-4">Gracias por tu atención.</p>
+
+            <a 
+              href={`/doc/${token}/print`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-2 bg-white border border-green-300 text-green-700 font-bold py-2.5 px-6 rounded-xl shadow-sm hover:bg-green-50 transition-colors"
+            >
+              <FileText className="w-4 h-4" /> Imprimir Receta / PDF
+            </a>
           </div>
         )}
 
@@ -431,39 +533,88 @@ export default function DoctorAccessPage() {
           <Card>
             <CardHeader icon={<FileText className="w-4 h-4" />} title="Formulario Médico" />
             <div className="p-4 space-y-4">
-              <FormField label="Diagnóstico" value={diagnostico} onChange={setDiagnostico} multiline />
-              <FormField label="Tratamiento indicado" value={tratamiento} onChange={setTratamiento} multiline />
-              <FormField label="Medicamento recetado" value={medicamento} onChange={setMedicamento} multiline />
+              <FormField label="Motivo de Consulta (Anamnesis)" value={anamnesis} onChange={setAnamnesis} multiline />
+              <FormField label="Exploración Física" value={exploracion} onChange={setExploracion} multiline />
 
               <div>
-                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Signos Vitales</p>
+                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Antropometría</p>
                 <div className="grid grid-cols-3 gap-2">
                   <div>
-                    <label className="text-xs text-slate-500 mb-1 block">Presión</label>
-                    <input value={presion} onChange={e => setPresion(e.target.value)} placeholder="120/80"
+                    <label className="text-xs text-slate-500 mb-1 block">Peso (kg)</label>
+                    <input type="number" step="0.1" value={peso} onChange={e => setPeso(e.target.value)} placeholder="Ej: 75.5"
                       className="w-full border border-slate-300 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-emerald-500 outline-none" />
                   </div>
                   <div>
-                    <label className="text-xs text-slate-500 mb-1 block">Pulso</label>
-                    <input value={pulso} onChange={e => setPulso(e.target.value)} placeholder="72 bpm"
+                    <label className="text-xs text-slate-500 mb-1 block">Talla (m)</label>
+                    <input type="number" step="0.01" value={talla} onChange={e => setTalla(e.target.value)} placeholder="Ej: 1.75"
                       className="w-full border border-slate-300 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-emerald-500 outline-none" />
                   </div>
                   <div>
-                    <label className="text-xs text-slate-500 mb-1 block">Temp.</label>
-                    <input value={temperatura} onChange={e => setTemperatura(e.target.value)} placeholder="36.6°"
-                      className="w-full border border-slate-300 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-emerald-500 outline-none" />
+                    <label className="text-xs text-slate-500 mb-1 block">IMC</label>
+                    <div className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm text-slate-600 font-semibold flex items-center h-[38px]">
+                      {peso && talla && parseFloat(talla) > 0 ? (parseFloat(peso) / Math.pow(parseFloat(talla), 2)).toFixed(2) : '--'}
+                    </div>
                   </div>
                 </div>
               </div>
 
+              <div>
+                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Signos Vitales</p>
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                  <div>
+                    <label className="text-xs text-slate-500 mb-1 block">Presión (T/A)</label>
+                    <input value={presion} onChange={e => setPresion(e.target.value)} placeholder="120/80" className="w-full border border-slate-300 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-emerald-500 outline-none" />
+                  </div>
+                  <div>
+                    <label className="text-xs text-slate-500 mb-1 block">Frec. Cardíaca</label>
+                    <input value={pulso} onChange={e => setPulso(e.target.value)} placeholder="72 lpm" className="w-full border border-slate-300 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-emerald-500 outline-none" />
+                  </div>
+                  <div>
+                    <label className="text-xs text-slate-500 mb-1 block">Frec. Respiratoria</label>
+                    <input value={frecResp} onChange={e => setFrecResp(e.target.value)} placeholder="16 rpm" className="w-full border border-slate-300 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-emerald-500 outline-none" />
+                  </div>
+                  <div>
+                    <label className="text-xs text-slate-500 mb-1 block">Temp. (°C)</label>
+                    <input type="number" step="0.1" value={temperatura} onChange={e => setTemperatura(e.target.value)} placeholder="36.5" className="w-full border border-slate-300 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-emerald-500 outline-none" />
+                  </div>
+                  <div>
+                    <label className="text-xs text-slate-500 mb-1 block">SpO2 (%)</label>
+                    <input type="number" value={spO2} onChange={e => setSpO2(e.target.value)} placeholder="98" className="w-full border border-slate-300 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-emerald-500 outline-none" />
+                  </div>
+                  <div>
+                    <label className="text-xs text-slate-500 mb-1 block">Glucosa (Opc)</label>
+                    <input value={glucosa} onChange={e => setGlucosa(e.target.value)} placeholder="95 mg/dL" className="w-full border border-slate-300 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-emerald-500 outline-none" />
+                  </div>
+                </div>
+              </div>
+
+              <FormField label="Diagnóstico" value={diagnostico} onChange={setDiagnostico} multiline />
+              <FormField label="Tratamiento indicado" value={tratamiento} onChange={setTratamiento} multiline />
+              <FormField label="Medicamento recetado" value={medicamento} onChange={setMedicamento} multiline />
+
               <FormField label="Observaciones del médico" value={notas} onChange={setNotas} multiline />
+
+              <div className="border-t border-slate-200 pt-4 space-y-4">
+                <SignaturePad 
+                  label="Firma del Médico *" 
+                  onSave={(dataUrl) => saveSignature(dataUrl, 'medico')}
+                  initialUrl={firmaMedico || undefined}
+                  disabled={!!firmaMedico || isClosed}
+                />
+                <SignaturePad 
+                  label="Firma del Paciente / Responsable *" 
+                  onSave={(dataUrl) => saveSignature(dataUrl, 'paciente')}
+                  initialUrl={firmaPaciente || undefined}
+                  disabled={!!firmaPaciente || isClosed}
+                />
+              </div>
 
               <button
                 onClick={saveForm}
-                disabled={saving}
-                className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3.5 rounded-2xl transition-colors disabled:opacity-50"
+                disabled={saving || isClosed}
+                className="w-full bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-bold py-3.5 rounded-2xl transition-colors shadow-md active:scale-[0.98]"
               >
-                {saving ? 'Guardando...' : '✓ Guardar formulario'}
+                {saving ? 'Guardando...' : '✓ Guardar Clínica'}
               </button>
             </div>
           </Card>

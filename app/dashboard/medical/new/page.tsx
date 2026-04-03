@@ -64,6 +64,9 @@ export default function NewMedicalServicePage() {
 
   // Step 2 fields — comunes
   const [patientName, setPatientName]     = useState('')
+  const [patientAge, setPatientAge]       = useState('')
+  const [patientGender, setPatientGender] = useState('')
+  const [patientOccupation, setPatientOccupation] = useState('')
   const [patientPhone, setPatientPhone]   = useState('')
   const [patientState, setPatientState]   = useState('')
   const [patientAddress, setPatientAddress] = useState('')
@@ -192,6 +195,9 @@ export default function NewMedicalServicePage() {
       body: JSON.stringify({
         serviceType,
         patientName:    patientName.trim(),
+        patientAge:     patientAge ? parseInt(patientAge) : null,
+        patientGender:  patientGender || null,
+        patientOccupation: patientOccupation.trim() || null,
         patientPhone:   patientPhone.trim(),
         patientAddress: patientState ? `${patientAddress.trim()}, ${patientState}` : patientAddress.trim(),
         symptoms:       symptoms.trim(),
@@ -392,6 +398,28 @@ export default function NewMedicalServicePage() {
           <div>
             <Label>No. Expediente</Label>
             <Input value={expediente} onChange={e => setExpediente(e.target.value)} placeholder="Exp-001" />
+          </div>
+          <div className="col-span-2 sm:col-span-1 border-t pt-3 sm:border-0 sm:pt-0">
+            <Label>Edad</Label>
+            <div className="relative">
+              <input type="number" min="0" value={patientAge} onChange={e => setPatientAge(e.target.value)} placeholder="Ej: 35"
+                className="w-full bg-white border border-slate-300 rounded-lg pl-3 pr-10 py-2 text-sm text-slate-900 outline-none focus:ring-2 focus:ring-emerald-500" />
+              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm">años</span>
+            </div>
+          </div>
+          <div className="col-span-2 sm:col-span-1 border-t pt-3 sm:border-0 sm:pt-0">
+            <Label>Género</Label>
+            <select value={patientGender} onChange={e => setPatientGender(e.target.value)}
+              className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-900 outline-none focus:ring-2 focus:ring-emerald-500">
+              <option value="">Selecciona...</option>
+              <option value="M">Masculino</option>
+              <option value="F">Femenino</option>
+              <option value="O">Otro</option>
+            </select>
+          </div>
+          <div className="col-span-2">
+            <Label>Ocupación (Opcional)</Label>
+            <Input value={patientOccupation} onChange={e => setPatientOccupation(e.target.value)} placeholder="Ej: Estudiante, Ingeniero..." />
           </div>
           {serviceType !== 'telemedicina' && (
             <>

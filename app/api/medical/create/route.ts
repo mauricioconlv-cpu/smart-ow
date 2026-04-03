@@ -37,7 +37,8 @@ export async function POST(req: NextRequest) {
     const companyId = profile.company_id
     const body = await req.json()
     const {
-      serviceType, patientName, patientPhone, patientAddress,
+      serviceType, patientName, patientAge, patientGender, patientOccupation, 
+      patientPhone, patientAddress,
       symptoms, aseguradora, expediente, scheduledAt,
       cobroCliente, costoPago, costoMedicamento, costoEnvio, costoConsulta,
       providerId, newDoctor,
@@ -99,6 +100,9 @@ export async function POST(req: NextRequest) {
         patient_name:        patientName.trim(),
         patient_phone:       patientPhone?.trim() || null,
         patient_address:     patientAddress?.trim() || null,
+        patient_age:         patientAge || null,
+        patient_gender:      patientGender || null,
+        patient_occupation:  patientOccupation || null,
         symptoms:            symptoms?.trim() || null,
         aseguradora:         aseguradora?.trim() || null,
         numero_expediente:   expediente?.trim() || null,

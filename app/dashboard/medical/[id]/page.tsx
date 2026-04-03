@@ -7,7 +7,7 @@ import dynamic from 'next/dynamic'
 import {
   ArrowLeft, Stethoscope, Package, Video, User, Phone, MapPin,
   Clock, DollarSign, FileText, Camera, CheckCircle2, AlertTriangle,
-  ChevronRight, Eye, EyeOff, Key, Copy
+  ChevronRight, Eye, EyeOff, Key, Copy, Printer
 } from 'lucide-react'
 
 const LiveMap = dynamic(() => import('../../components/Map'), { ssr: false, loading: () => <div className="h-full w-full bg-slate-100 animate-pulse rounded-xl" /> })
@@ -54,6 +54,7 @@ export default function MedicalServiceDetailPage() {
       .select(`
         id, folio, folio_prefix, service_type, status,
         patient_name, patient_phone, patient_address, patient_coords,
+        patient_age, patient_gender, patient_occupation, patient_weight, patient_height,
         symptoms, scheduled_at, created_at, closed_at,
         aseguradora, numero_expediente, follow_up_notes,
         costo_pago_proveedor, costo_medicamento, costo_envio, costo_consulta, cobro_cliente,
@@ -185,6 +186,17 @@ export default function MedicalServiceDetailPage() {
             <p className="text-sm text-slate-500 truncate">{service.patient_name}</p>
           </div>
         </div>
+        <div className="flex shrink-0">
+          <a
+            href={`/dashboard/medical/${id}/print`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="p-2 md:px-4 md:py-2 flex items-center gap-2 bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 rounded-xl font-semibold shadow-sm transition-colors text-sm"
+            title="Imprimir Receta / Reporte Clínico"
+          >
+            <Printer className="w-4 h-4" /> <span className="hidden md:inline">Imprimir PDF</span>
+          </a>
+        </div>
       </div>
 
       {/* Accesos del Doctor */}
@@ -277,6 +289,9 @@ export default function MedicalServiceDetailPage() {
         <SectionHeader icon={<User className="w-4 h-4" />} title="Datos del Paciente" />
         <div className="p-4 grid grid-cols-2 gap-3 text-sm">
           <InfoRow label="Nombre" value={service.patient_name} />
+          {service.patient_age && <InfoRow label="Edad" value={`${service.patient_age} años`} />}
+          {service.patient_gender && <InfoRow label="Género" value={service.patient_gender === 'M' ? 'Masculino' : service.patient_gender === 'F' ? 'Femenino' : 'Otro'} />}
+          {service.patient_occupation && <InfoRow label="Ocupación" value={service.patient_occupation} />}
           <InfoRow label="Teléfono" value={service.patient_phone} icon={<Phone className="w-3 h-3" />} />
           {service.patient_address && <InfoRow label="Dirección" value={service.patient_address} span />}
           {service.symptoms && <InfoRow label="Síntomas / Motivo" value={service.symptoms} span />}
