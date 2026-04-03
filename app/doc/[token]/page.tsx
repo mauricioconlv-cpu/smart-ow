@@ -76,22 +76,37 @@ export default function DoctorAccessPage() {
     setVerifying(true)
     setPinError('')
 
-    const res = await fetch('/api/medical/verify-pin', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ token, pin: fullPin }),
-    })
-    const data = await res.json()
-    setVerifying(false)
-
-    if (!res.ok || data.error) {
-      if (res.status === 403) {
-        setPhase('expired')
-      } else {
-        setPinError(data.error || 'PIN incorrecto.')
-        setPin(['','','',''])
-        pinRefs[0].current?.focus()
+    let data;
+    try {
+      const res = await fetch('/api/medical/verify-pin', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token, pin: fullPin }),
+      })
+      
+      const isJson = res.headers.get('content-type')?.includes('application/json')
+      if (!isJson) {
+        throw new Error(`Error en el servidor (${res.status}). Intenta nuevamente.`)
       }
+      
+      data = await res.json()
+      setVerifying(false)
+
+      if (!res.ok || data.error) {
+        if (res.status === 403 && data.error?.includes('expirado') || data.error?.includes('concluido')) {
+          setPhase('expired')
+        } else {
+          setPinError(data.error || 'PIN incorrecto o hubo un error.')
+          setPin(['','','',''])
+          pinRefs[0].current?.focus()
+        }
+        return
+      }
+    } catch (err: any) {
+      setVerifying(false)
+      setPinError(err.message || 'Error de conexión. Revisa tu internet.')
+      setPin(['','','',''])
+      pinRefs[0].current?.focus()
       return
     }
 

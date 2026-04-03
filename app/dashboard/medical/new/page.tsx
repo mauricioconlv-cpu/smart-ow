@@ -65,6 +65,7 @@ export default function NewMedicalServicePage() {
   // Step 2 fields — comunes
   const [patientName, setPatientName]     = useState('')
   const [patientPhone, setPatientPhone]   = useState('')
+  const [patientState, setPatientState]   = useState('')
   const [patientAddress, setPatientAddress] = useState('')
   const [symptoms, setSymptoms]           = useState('')
   const [aseguradora, setAseguradora]     = useState('')
@@ -192,7 +193,7 @@ export default function NewMedicalServicePage() {
         serviceType,
         patientName:    patientName.trim(),
         patientPhone:   patientPhone.trim(),
-        patientAddress: patientAddress.trim(),
+        patientAddress: patientState ? `${patientAddress.trim()}, ${patientState}` : patientAddress.trim(),
         symptoms:       symptoms.trim(),
         aseguradora:    aseguradora === 'particular' || !aseguradora ? null : clients.find(c => c.id === aseguradora)?.name,
         expediente:     expediente.trim(),
@@ -393,10 +394,21 @@ export default function NewMedicalServicePage() {
             <Input value={expediente} onChange={e => setExpediente(e.target.value)} placeholder="Exp-001" />
           </div>
           {serviceType !== 'telemedicina' && (
-            <div className="col-span-2">
-              <Label>Dirección del Paciente</Label>
-              <Input value={patientAddress} onChange={e => setPatientAddress(e.target.value)} placeholder="Calle, Colonia, Ciudad" />
-            </div>
+            <>
+              <div className="col-span-2 sm:col-span-1">
+                <Label>Estado de la República</Label>
+                <select value={patientState} onChange={e => { setPatientState(e.target.value); setSelectedProvider('') }}
+                  className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-900 focus:ring-2 focus:ring-emerald-500 outline-none">
+                  <option value="">Seleccione un Estado...</option>
+                  {ESTADOS_MEXICO.map(s => <option key={s} value={s}>{s}</option>)}
+                </select>
+                <p className="text-[10px] text-slate-400 mt-1">Filtra el directorio de doctores</p>
+              </div>
+              <div className="col-span-2 sm:col-span-1">
+                <Label>Dirección (Calle, Col, Mun)</Label>
+                <Input value={patientAddress} onChange={e => setPatientAddress(e.target.value)} placeholder="Ej: Av Siempre Viva 123" />
+              </div>
+            </>
           )}
           <div className="col-span-2">
             <Label>{serviceType === 'reparto_medicamento' ? 'Medicamentos solicitados' : 'Síntomas / Motivo de consulta'}</Label>
@@ -463,7 +475,9 @@ export default function NewMedicalServicePage() {
                 className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-900 focus:ring-2 focus:ring-emerald-500 outline-none"
               >
                 <option value="">-- Sin asignar --</option>
-                {providers.map(p => (
+                {providers
+                  .filter(p => !patientState || p.state === patientState)
+                  .map(p => (
                   <option key={p.id} value={p.id}>
                     {p.full_name} — {p.specialty} {p.state ? `(${p.municipality ? p.municipality + ', ' : ''}${p.state})` : ''}
                   </option>
