@@ -147,7 +147,7 @@ export async function POST(req: NextRequest) {
       }, { status: 500 })
     }
 
-    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://smart-tow.vercel.app'
+    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://smart-ow.vercel.app'
     const folioStr = `${service.folio_prefix}-${String(service.folio).padStart(4, '0')}`
     const link = `${siteUrl}/doc/${tokenRow.token}`
 

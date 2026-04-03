@@ -89,7 +89,7 @@ export default function MedicalServiceDetailPage() {
       .single()
       .then(({ data }) => {
         if (data) {
-          const siteUrl = typeof window !== 'undefined' ? window.location.origin : 'https://smart-tow.vercel.app'
+          const siteUrl = typeof window !== 'undefined' ? window.location.origin : 'https://smart-ow.vercel.app'
           setTokenInfo({ link: `${siteUrl}/doc/${data.token}`, pin: data.pin, accessed_at: data.accessed_at })
         }
       })
