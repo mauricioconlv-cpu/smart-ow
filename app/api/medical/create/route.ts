@@ -62,6 +62,8 @@ export async function POST(req: NextRequest) {
           cedula:        newDoctor.cedula || null,
           phone:         newDoctor.phone,
           specialty:     newDoctor.specialty || 'Medicina General',
+          state:         newDoctor.state || null,
+          municipality:  newDoctor.municipality || null,
           service_types: newDoctor.service_types || [serviceType],
         })
         .select('id')

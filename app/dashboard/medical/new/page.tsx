@@ -10,6 +10,14 @@ import {
   Lock, Unlock, AlertTriangle
 } from 'lucide-react'
 
+const ESTADOS_MEXICO = [
+  'Aguascalientes', 'Baja California', 'Baja California Sur', 'Campeche', 'Chiapas',
+  'Chihuahua', 'Ciudad de México', 'Coahuila', 'Colima', 'Durango', 'Estado de México',
+  'Guanajuato', 'Guerrero', 'Hidalgo', 'Jalisco', 'Michoacán', 'Morelos', 'Nayarit',
+  'Nuevo León', 'Oaxaca', 'Puebla', 'Querétaro', 'Quintana Roo', 'San Luis Potosí',
+  'Sinaloa', 'Sonora', 'Tabasco', 'Tamaulipas', 'Tlaxcala', 'Veracruz', 'Yucatán', 'Zacatecas'
+]
+
 // ── Tipos ──────────────────────────────────────────────────────────────────
 type ServiceType = 'medico_domicilio' | 'reparto_medicamento' | 'telemedicina'
 
@@ -92,6 +100,8 @@ export default function NewMedicalServicePage() {
   const [doctorCedula, setDoctorCedula]   = useState('')
   const [doctorPhone, setDoctorPhone]     = useState('')
   const [doctorSpecialty, setDoctorSpecialty] = useState('Medicina General')
+  const [doctorState, setDoctorState]     = useState('')
+  const [doctorMunicipality, setDoctorMunicipality] = useState('')
 
   // Estado final
   const [isSubmitting, setIsSubmitting]   = useState(false)
@@ -204,6 +214,8 @@ export default function NewMedicalServicePage() {
           cedula:    doctorCedula.trim(),
           phone:     doctorPhone.trim(),
           specialty: doctorSpecialty,
+          state:     doctorState,
+          municipality: doctorMunicipality.trim(),
           service_types: [serviceType],
         } : null,
       }),
@@ -453,7 +465,7 @@ export default function NewMedicalServicePage() {
                 <option value="">-- Sin asignar --</option>
                 {providers.map(p => (
                   <option key={p.id} value={p.id}>
-                    {p.full_name} — {p.specialty}
+                    {p.full_name} — {p.specialty} {p.state ? `(${p.municipality ? p.municipality + ', ' : ''}${p.state})` : ''}
                   </option>
                 ))}
               </select>
@@ -484,6 +496,18 @@ export default function NewMedicalServicePage() {
               <div className="col-span-2">
                 <Label>Especialidad</Label>
                 <Input value={doctorSpecialty} onChange={e => setDoctorSpecialty(e.target.value)} placeholder="Medicina General" />
+              </div>
+              <div className="col-span-2 sm:col-span-1">
+                <Label>Estado</Label>
+                <select value={doctorState} onChange={e => setDoctorState(e.target.value)}
+                  className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-900 focus:ring-2 focus:ring-emerald-500 outline-none">
+                  <option value="">Seleccione un Estado...</option>
+                  {ESTADOS_MEXICO.map(s => <option key={s} value={s}>{s}</option>)}
+                </select>
+              </div>
+              <div className="col-span-2 sm:col-span-1">
+                <Label>Municipio / Alcaldía</Label>
+                <Input value={doctorMunicipality} onChange={e => setDoctorMunicipality(e.target.value)} placeholder="Ej: Naucalpan" />
               </div>
             </div>
             <button

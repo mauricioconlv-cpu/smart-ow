@@ -12,6 +12,14 @@ const SERVICE_TYPE_LABELS: Record<string, { label: string; color: string }> = {
   telemedicina:        { label: 'Telemedicina', color: 'bg-violet-100 text-violet-700' },
 }
 
+const ESTADOS_MEXICO = [
+  'Aguascalientes', 'Baja California', 'Baja California Sur', 'Campeche', 'Chiapas',
+  'Chihuahua', 'Ciudad de México', 'Coahuila', 'Colima', 'Durango', 'Estado de México',
+  'Guanajuato', 'Guerrero', 'Hidalgo', 'Jalisco', 'Michoacán', 'Morelos', 'Nayarit',
+  'Nuevo León', 'Oaxaca', 'Puebla', 'Querétaro', 'Quintana Roo', 'San Luis Potosí',
+  'Sinaloa', 'Sonora', 'Tabasco', 'Tamaulipas', 'Tlaxcala', 'Veracruz', 'Yucatán', 'Zacatecas'
+]
+
 interface Provider {
   id: string
   full_name: string
@@ -20,6 +28,9 @@ interface Provider {
   specialty: string
   service_types: string[]
   is_active: boolean
+  state: string | null
+  municipality: string | null
+  notes?: string | null
   created_at: string
 }
 
@@ -30,6 +41,7 @@ export default function MedicalProvidersPage() {
   const [editingId, setEditingId] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [filterActive, setFilterActive] = useState<'all' | 'active' | 'inactive'>('active')
+  const [filterState, setFilterState] = useState<string>('')
   const [companyId, setCompanyId] = useState<string | null>(null)
   const [saveError, setSaveError] = useState('')
 
@@ -39,6 +51,8 @@ export default function MedicalProvidersPage() {
   const [phone, setPhone] = useState('')
   const [specialty, setSpecialty] = useState('Medicina General')
   const [serviceTypes, setServiceTypes] = useState<string[]>(['medico_domicilio'])
+  const [stateForm, setStateForm] = useState('')
+  const [municipality, setMunicipality] = useState('')
   const [notes, setNotes] = useState('')
 
   const supabase = createClient()
@@ -65,12 +79,14 @@ export default function MedicalProvidersPage() {
 
   function resetForm() {
     setFullName(''); setCedula(''); setPhone(''); setSpecialty('Medicina General')
-    setServiceTypes(['medico_domicilio']); setNotes(''); setEditingId(null); setShowForm(false)
+    setServiceTypes(['medico_domicilio']); setStateForm(''); setMunicipality(''); setNotes(''); 
+    setEditingId(null); setShowForm(false)
   }
 
   function startEdit(p: Provider) {
     setFullName(p.full_name); setCedula(p.cedula ?? ''); setPhone(p.phone)
-    setSpecialty(p.specialty); setServiceTypes(p.service_types ?? []); setNotes('')
+    setSpecialty(p.specialty); setServiceTypes(p.service_types ?? []); 
+    setStateForm(p.state ?? ''); setMunicipality(p.municipality ?? ''); setNotes(p.notes ?? '')
     setEditingId(p.id); setShowForm(true)
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
@@ -80,12 +96,17 @@ export default function MedicalProvidersPage() {
   }
 
   async function handleSave() {
-    if (!fullName.trim() || !phone.trim()) return
+    if (!fullName.trim() || !phone.trim() || !stateForm) {
+      setSaveError('Nombre, teléfono y estado son requeridos.')
+      return
+    }
     setSaveError('')
     setSaving(true)
     const payload = {
       full_name: fullName.trim(), cedula: cedula.trim() || null,
-      phone: phone.trim(), specialty, service_types: serviceTypes, notes: notes.trim() || null,
+      phone: phone.trim(), specialty, service_types: serviceTypes,
+      state: stateForm, municipality: municipality.trim() || null,
+      notes: notes.trim() || null,
     }
 
     if (editingId) {
@@ -107,9 +128,14 @@ export default function MedicalProvidersPage() {
   }
 
   const filtered = providers.filter(p => {
-    if (filterActive === 'active')   return p.is_active
-    if (filterActive === 'inactive') return !p.is_active
-    return true
+    let match = true
+    if (filterActive === 'active')   match = p.is_active
+    else if (filterActive === 'inactive') match = !p.is_active
+    
+    if (match && filterState) {
+      match = p.state === filterState
+    }
+    return match
   })
 
   return (
@@ -167,12 +193,25 @@ export default function MedicalProvidersPage() {
                 <input value={phone} onChange={e => setPhone(e.target.value)} placeholder="55XXXXXXXX" type="tel"
                   className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:ring-2 focus:ring-emerald-500 outline-none" />
               </div>
-              <div className="col-span-2">
+              <div className="col-span-2 sm:col-span-1">
                 <label className="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">Especialidad</label>
                 <select value={specialty} onChange={e => setSpecialty(e.target.value)}
                   className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-900 focus:ring-2 focus:ring-emerald-500 outline-none">
                   {SPECIALTY_OPTIONS.map(s => <option key={s} className="text-slate-900">{s}</option>)}
                 </select>
+              </div>
+              <div className="col-span-2 sm:col-span-1">
+                <label className="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">Estado *</label>
+                <select value={stateForm} onChange={e => setStateForm(e.target.value)}
+                  className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-900 focus:ring-2 focus:ring-emerald-500 outline-none">
+                  <option value="">Seleccione un Estado...</option>
+                  {ESTADOS_MEXICO.map(s => <option key={s} value={s} className="text-slate-900">{s}</option>)}
+                </select>
+              </div>
+              <div className="col-span-2 sm:col-span-1 border-t sm:border-t-0 pt-3 sm:pt-0">
+                <label className="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">Municipio / Alcaldía (Opcional)</label>
+                <input value={municipality} onChange={e => setMunicipality(e.target.value)} placeholder="Ej: Naucalpan"
+                  className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:ring-2 focus:ring-emerald-500 outline-none" />
               </div>
               <div className="col-span-2">
                 <label className="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">Tipos de servicio que puede atender</label>
@@ -202,15 +241,29 @@ export default function MedicalProvidersPage() {
       )}
 
       {/* Filtros */}
-      <div className="flex gap-2">
-        {(['active','all','inactive'] as const).map(f => (
-          <button key={f} onClick={() => setFilterActive(f)}
-            className={`px-4 py-1.5 rounded-full text-sm font-semibold transition-colors ${
-              filterActive === f ? 'bg-slate-800 text-white' : 'bg-white border border-slate-300 text-slate-600 hover:bg-slate-50'
-            }`}>
-            {f === 'active' ? 'Activos' : f === 'inactive' ? 'Inactivos' : 'Todos'}
-          </button>
-        ))}
+      <div className="flex flex-col sm:flex-row gap-3">
+        <div className="flex gap-2 shrink-0">
+          {(['active','all','inactive'] as const).map(f => (
+            <button key={f} onClick={() => setFilterActive(f)}
+              className={`px-4 py-1.5 rounded-full text-sm font-semibold transition-colors ${
+                filterActive === f ? 'bg-slate-800 text-white' : 'bg-white border border-slate-300 text-slate-600 hover:bg-slate-50'
+              }`}>
+              {f === 'active' ? 'Activos' : f === 'inactive' ? 'Inactivos' : 'Todos'}
+            </button>
+          ))}
+        </div>
+        <div className="flex-1 max-w-xs relative">
+          <select 
+            value={filterState} 
+            onChange={e => setFilterState(e.target.value)}
+            className="w-full bg-white border border-slate-300 text-slate-600 font-semibold rounded-full px-4 py-1.5 text-sm appearance-none outline-none focus:ring-2 focus:ring-emerald-500"
+          >
+            <option value="">🌎 Todos los Estados</option>
+            {ESTADOS_MEXICO.map(st => (
+              <option key={st} value={st}>{st}</option>
+            ))}
+          </select>
+        </div>
       </div>
 
       {/* Lista */}
@@ -234,7 +287,12 @@ export default function MedicalProvidersPage() {
                 <div className="flex items-start justify-between gap-2 flex-wrap">
                   <div>
                     <p className="font-bold text-slate-800">{p.full_name}</p>
-                    <p className="text-sm text-slate-500">{p.specialty}</p>
+                    <p className="text-sm text-slate-500 font-medium">{p.specialty}</p>
+                    {p.state && (
+                      <p className="text-xs text-slate-400 mt-0.5 flex items-center gap-1">
+                        📍 {p.municipality ? `${p.municipality}, ` : ''}{p.state}
+                      </p>
+                    )}
                   </div>
                   <div className="flex items-center gap-2">
                     <button onClick={() => startEdit(p)} className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-700">
