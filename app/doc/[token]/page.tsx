@@ -339,7 +339,7 @@ export default function DoctorAccessPage() {
 
     // Usamos la API pública de Supabase Storage con anon key
     const uploadRes = await fetch(
-      `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/evidence/${filename}`,
+      `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/service-evidence/${filename}`,
       {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY}` },
@@ -348,7 +348,7 @@ export default function DoctorAccessPage() {
     )
 
     if (uploadRes.ok) {
-      const photoUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/evidence/${filename}`
+      const photoUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/service-evidence/${filename}`
       await fetch('/api/medical/doctor-update', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': authHeader },

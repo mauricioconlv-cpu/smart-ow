@@ -152,7 +152,7 @@ export async function POST(req: NextRequest) {
       // Upload with admin privileges
       const { data: uploadData, error: uploadErr } = await admin
         .storage
-        .from('evidence')
+        .from('service-evidence')
         .upload(filename, arrayBuffer, {
           contentType: 'image/png',
           upsert: true
