@@ -250,30 +250,25 @@ export default function DoctorAccessPage() {
   async function saveSignature(dataUrl: string, type: 'medico' | 'paciente') {
     setSaving(true)
     try {
-      const res = await fetch(dataUrl)
-      const blob = await res.blob()
-      const filename = `medical/${service.id}/firma_${type}_${Date.now()}.png`
-      const formData = new FormData()
-      formData.append('file', blob)
+      const res = await fetch('/api/medical/doctor-update', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': authHeader },
+        body: JSON.stringify({ action: 'save_signature', signatureDataUrl: dataUrl, type })
+      })
+      const data = await res.json()
       
-      const uploadRes = await fetch(
-        `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/evidence/${filename}`,
-        { method: 'POST', headers: { 'Authorization': `Bearer ${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY}` }, body: formData }
-      )
-      
-      if (uploadRes.ok) {
-        const publicUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/evidence/${filename}`
-        await fetch('/api/medical/doctor-update', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Authorization': authHeader },
-          body: JSON.stringify({ action: 'save_signature', signatureUrl: publicUrl, type })
-        })
-        if (type === 'medico') setFirmaMedico(publicUrl)
-        else setFirmaPaciente(publicUrl)
-        setService((prev: any) => ({ ...prev, [type === 'medico' ? 'firma_medico_url' : 'firma_paciente_url']: publicUrl }))
+      if (data.success) {
+        if (type === 'medico') setFirmaMedico(data.publicUrl)
+        else setFirmaPaciente(data.publicUrl)
+        setService((prev: any) => ({ ...prev, [type === 'medico' ? 'firma_medico_url' : 'firma_paciente_url']: data.publicUrl }))
         showSuccess(`✓ Firma guardada`)
+      } else {
+        alert('Hubo un error al guardar la firma: ' + data.error)
       }
-    } catch(err) { console.error('Error guardando firma', err) }
+    } catch(err) { 
+      console.error('Error guardando firma', err) 
+      alert('Hubo un error de conexión al guardar la firma.')
+    }
     setSaving(false)
   }
 

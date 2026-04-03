@@ -140,17 +140,36 @@ export async function POST(req: NextRequest) {
 
     // ── Acción: guardar firma digital ────────────────────────────────────
     if (action === 'save_signature') {
-      const { signatureUrl, type = 'paciente' } = body
-      if (!signatureUrl) return NextResponse.json({ error: 'signatureUrl requerida.' }, { status: 400 })
+      const { signatureDataUrl, type = 'paciente' } = body
+      if (!signatureDataUrl) return NextResponse.json({ error: 'signatureDataUrl requerida.' }, { status: 400 })
 
+      // Decode base64
+      const base64Data = signatureDataUrl.replace(/^data:image\/\w+;base64,/, '')
+      const buffer = Buffer.from(base64Data, 'base64')
+      const filename = `medical/${tokenRow.service_id}/firma_${type}_${Date.now()}.png`
+
+      // Upload with admin privileges (bypassing RLS)
+      const { data: uploadData, error: uploadErr } = await admin
+        .storage
+        .from('evidence')
+        .upload(filename, buffer, {
+          contentType: 'image/png',
+          upsert: true
+        })
+      
+      if (uploadErr) {
+        return NextResponse.json({ error: 'Error al subir la firma.' }, { status: 500 })
+      }
+
+      const publicUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/evidence/${filename}`
       const column = type === 'medico' ? 'firma_medico_url' : 'firma_paciente_url'
 
       await admin
         .from('medical_services')
-        .update({ [column]: signatureUrl })
+        .update({ [column]: publicUrl })
         .eq('id', tokenRow.service_id)
 
-      return NextResponse.json({ success: true })
+      return NextResponse.json({ success: true, publicUrl })
     }
 
     return NextResponse.json({ error: 'Acción no reconocida.' }, { status: 400 })

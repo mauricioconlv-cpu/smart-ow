@@ -46,7 +46,7 @@ export default function MedicalServiceDetailPage() {
   const [showCosts, setShowCosts]     = useState(false)
   const [notes, setNotes]             = useState('')
   const [message, setMessage]         = useState<{ text: string; ok: boolean } | null>(null)
-  const [tokenInfo, setTokenInfo]     = useState<{ link: string; pin: string } | null>(null)
+  const [tokenInfo, setTokenInfo]     = useState<{ link: string; pin: string; accessed_at?: string } | null>(null)
 
   const fetchService = useCallback(async () => {
     const { data } = await supabase
@@ -81,14 +81,14 @@ export default function MedicalServiceDetailPage() {
 
     // Fetch Token Info si existe
     supabase.from('medical_service_tokens')
-      .select('token, pin')
+      .select('token, pin, accessed_at')
       .eq('service_id', id)
       .eq('is_active', true)
       .single()
       .then(({ data }) => {
         if (data) {
           const siteUrl = typeof window !== 'undefined' ? window.location.origin : 'https://smart-tow.vercel.app'
-          setTokenInfo({ link: `${siteUrl}/doc/${data.token}`, pin: data.pin })
+          setTokenInfo({ link: `${siteUrl}/doc/${data.token}`, pin: data.pin, accessed_at: data.accessed_at })
         }
       })
 
@@ -217,10 +217,19 @@ export default function MedicalServiceDetailPage() {
               </div>
             </div>
             <div className="w-full md:w-auto shrink-0 flex flex-col items-center">
-              <p className="text-[10px] items-center font-bold text-amber-700 uppercase tracking-wider mb-1 text-center w-full md:text-left">PIN DE ACCESO</p>
-              <div className="bg-white border border-amber-200 py-1.5 px-5 rounded-lg text-center shadow-sm">
-                <span className="font-black text-xl text-amber-600 tracking-[0.2em]">{tokenInfo.pin}</span>
-              </div>
+              <p className="text-[10px] items-center font-bold text-amber-700 uppercase tracking-wider mb-1 text-center w-full md:text-left">
+                PIN DE ACCESO
+              </p>
+              {tokenInfo.accessed_at ? (
+                <div className="bg-emerald-50 border border-emerald-200 py-1.5 px-5 rounded-lg text-center shadow-sm flex items-center gap-2 text-emerald-700">
+                  <CheckCircle2 className="w-4 h-4" />
+                  <span className="font-bold text-sm tracking-wide">PIN CANJEADO</span>
+                </div>
+              ) : (
+                <div className="bg-white border border-amber-200 py-1.5 px-5 rounded-lg text-center shadow-sm">
+                  <span className="font-black text-xl text-amber-600 tracking-[0.2em]">{tokenInfo.pin}</span>
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -253,7 +262,43 @@ export default function MedicalServiceDetailPage() {
             <ChevronRight className="w-4 h-4 text-slate-500" />
             <span className="font-bold text-sm text-slate-700 uppercase tracking-wide">Avance del Servicio</span>
           </div>
-          <div className="p-4 space-y-3">
+          <div className="p-4 space-y-5">
+            {/* ── Stepper UI ── */}
+            <div className="flex items-center justify-between w-full relative mb-2">
+              <div className="absolute left-0 top-1/2 -translate-y-1/2 w-full h-1 bg-slate-100 rounded-full z-0"></div>
+              {(() => {
+                const flow = ['cotizacion', 'programado', 'rumbo_consulta', 'en_sitio', 'contacto_paciente', 'en_consulta', 'concluido'];
+                let statesToShow = flow;
+                if (service?.service_type === 'telemedicina') {
+                  statesToShow = ['cotizacion', 'programado', 'en_consulta', 'concluido'];
+                }
+                const currentIndex = statesToShow.indexOf(service?.status) !== -1 ? statesToShow.indexOf(service?.status) : 0;
+
+                return statesToShow.map((st, i) => {
+                  const isDone = i < currentIndex;
+                  const isCurrent = i === currentIndex;
+                  const label = STATUS_LABELS[st] ?? st;
+
+                  return (
+                    <div key={st} className="relative z-10 flex flex-col items-center gap-2 w-full max-w-[80px]">
+                      <div className={`w-6 h-6 sm:w-8 sm:h-8 rounded-full border-2 flex items-center justify-center transition-colors ${
+                        isDone ? 'bg-emerald-500 border-emerald-500 text-white' :
+                        isCurrent ? 'bg-emerald-50 border-emerald-500 text-emerald-600' :
+                        'bg-white border-slate-200 text-slate-300'
+                      }`}>
+                        {isDone ? <CheckCircle2 className="w-4 h-4" /> : <span className="text-xs font-bold">{i+1}</span>}
+                      </div>
+                      <span className={`text-[10px] text-center font-bold tracking-tight px-1 leading-tight ${
+                        isDone || isCurrent ? 'text-slate-800' : 'text-slate-400'
+                      }`}>
+                        {label}
+                      </span>
+                    </div>
+                  );
+                });
+              })()}
+            </div>
+
             <textarea
               value={notes}
               onChange={e => setNotes(e.target.value)}
