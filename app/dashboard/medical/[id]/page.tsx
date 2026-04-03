@@ -7,7 +7,7 @@ import dynamic from 'next/dynamic'
 import {
   ArrowLeft, Stethoscope, Package, Video, User, Phone, MapPin,
   Clock, DollarSign, FileText, Camera, CheckCircle2, AlertTriangle,
-  ChevronRight, Eye, EyeOff, Key, Copy, Printer
+  ChevronRight, Eye, EyeOff, Key, Copy, Printer, MessageSquare, Send
 } from 'lucide-react'
 
 const LiveMap = dynamic(() => import('../../components/Map'), { ssr: false, loading: () => <div className="h-full w-full bg-slate-100 animate-pulse rounded-xl" /> })
@@ -47,6 +47,7 @@ export default function MedicalServiceDetailPage() {
   const [notes, setNotes]             = useState('')
   const [message, setMessage]         = useState<{ text: string; ok: boolean } | null>(null)
   const [tokenInfo, setTokenInfo]     = useState<{ link: string; pin: string; accessed_at?: string } | null>(null)
+  const [chatMessage, setChatMessage] = useState('')
 
   const fetchService = useCallback(async () => {
     const { data } = await supabase
@@ -135,6 +136,22 @@ export default function MedicalServiceDetailPage() {
     fetchService()
   }
 
+  async function sendChatMessage() {
+    if (!chatMessage.trim() || !service) return
+    const messages = service.chat_messages || []
+    messages.push({
+      sender: 'admin',
+      text: chatMessage.trim(),
+      timestamp: new Date().toISOString()
+    })
+    const { error } = await supabase.from('medical_services').update({ chat_messages: messages }).eq('id', id)
+    if (!error) setChatMessage('')
+    else {
+      setMessage({ text: 'Error al enviar mensaje.', ok: false })
+      setTimeout(() => setMessage(null), 3000)
+    }
+  }
+
   if (loading) return <div className="flex items-center justify-center h-64 text-slate-400">Cargando...</div>
   if (!service) return <div className="flex items-center justify-center h-64 text-red-500">Servicio no encontrado.</div>
 
@@ -149,7 +166,10 @@ export default function MedicalServiceDetailPage() {
     : []
 
   return (
-    <div className="max-w-3xl mx-auto space-y-5 py-4 pb-10">
+    <div className="max-w-6xl mx-auto grid grid-cols-1 xl:grid-cols-3 gap-6 py-4 pb-10 px-2 lg:px-0">
+      
+      {/* ── Columna Izquierda (Detalles del Servicio) ── */}
+      <div className="xl:col-span-2 space-y-5">
 
       {/* Toast */}
       {message && (
@@ -452,6 +472,56 @@ export default function MedicalServiceDetailPage() {
           <div className="p-4 text-sm text-slate-700 whitespace-pre-wrap">{service.follow_up_notes}</div>
         </div>
       )}
+      </div>
+
+      {/* ── Columna Derecha (Chat) ── */}
+      <div className="xl:col-span-1 border-t xl:border-t-0 pt-6 xl:pt-0">
+        <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden sticky top-6 flex flex-col" style={{ height: 'calc(100vh - 48px)' }}>
+          <div className="flex items-center gap-2 px-4 py-3 border-b border-slate-100 bg-emerald-50">
+            <MessageSquare className="w-4 h-4 text-emerald-600" />
+            <span className="font-bold text-sm text-emerald-800 uppercase tracking-wide">Chat Operativo — En Vivo</span>
+          </div>
+          
+          <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-slate-50">
+            {!service?.chat_messages?.length && (
+              <div className="text-center text-slate-400 text-sm mt-10">El chat está vacío.</div>
+            )}
+            {service?.chat_messages?.map((msg: any, i: number) => {
+              const isAdmin = msg.sender === 'admin'
+              return (
+                <div key={i} className={`flex flex-col ${isAdmin ? 'items-end' : 'items-start'}`}>
+                  <div className={`px-4 py-2 rounded-2xl max-w-[85%] text-sm shadow-sm ${
+                    isAdmin ? 'bg-emerald-100 text-emerald-900 rounded-tr-sm' : 'bg-white border border-slate-200 text-slate-800 rounded-tl-sm'
+                  }`}>
+                    {msg.text}
+                  </div>
+                  <span className="text-[10px] text-slate-400 mt-1 px-1">
+                    {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                  </span>
+                </div>
+              )
+            })}
+          </div>
+
+          <div className="p-3 bg-white border-t border-slate-100 flex items-center gap-2">
+            <input
+              value={chatMessage}
+              onChange={e => setChatMessage(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && sendChatMessage()}
+              placeholder="Escribe un mensaje al médico..."
+              className="flex-1 border border-slate-300 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-emerald-500 outline-none"
+            />
+            <button
+              onClick={sendChatMessage}
+              disabled={!chatMessage.trim()}
+              className="w-10 h-10 shrink-0 bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-300 text-white rounded-full flex items-center justify-center transition-colors shadow-sm"
+            >
+              <Send className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      </div>
+
     </div>
   )
 }

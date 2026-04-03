@@ -5,7 +5,7 @@ import { useParams } from 'next/navigation'
 import {
   Stethoscope, Package, Video, MapPin, Phone, User,
   ChevronRight, CheckCircle2, Camera, FileText, Lock,
-  AlertTriangle, Loader2, Activity
+  AlertTriangle, Loader2, Activity, MessageSquare, Send
 } from 'lucide-react'
 import { SignaturePad } from '@/components/ui/SignaturePad'
 
@@ -51,7 +51,7 @@ export default function DoctorAccessPage() {
 
   // Service actions
   const [advancing, setAdvancing]       = useState(false)
-  const [activeSection, setActiveSection] = useState<'status'|'form'|'photos'>('status')
+  const [activeSection, setActiveSection] = useState<'status'|'form'|'photos'|'chat'>('status')
   const [saving, setSaving]             = useState(false)
   const [photoUploading, setPhotoUploading] = useState(false)
   const [gpsActive, setGpsActive]       = useState(false)
@@ -77,6 +77,11 @@ export default function DoctorAccessPage() {
   
   const [firmaPaciente, setFirmaPaciente] = useState<string | null>(null)
   const [firmaMedico, setFirmaMedico]     = useState<string | null>(null)
+
+  // Chat
+  const [chatMessage, setChatMessage] = useState('')
+  const [unreadChat, setUnreadChat] = useState(false)
+  const chatIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   const pinRefs = [useRef<HTMLInputElement>(null), useRef<HTMLInputElement>(null), useRef<HTMLInputElement>(null), useRef<HTMLInputElement>(null)]
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -183,6 +188,53 @@ export default function DoctorAccessPage() {
   }
 
   useEffect(() => () => { if (gpsIntervalRef.current) clearInterval(gpsIntervalRef.current) }, [])
+
+  // ── Polling & Chat ────────────────────────────────────────────────────────
+  useEffect(() => {
+    const isClosedLoc = service ? ['concluido', 'cancelado'].includes(service.status) : false
+    if (phase !== 'service' || !service || isClosedLoc) return
+    const interval = setInterval(async () => {
+      try {
+        const res = await fetch('/api/medical/doctor-update', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': authHeader },
+          body: JSON.stringify({ action: 'get_chat' }),
+        })
+        const data = await res.json()
+        if (data.success && data.messages) {
+          setService((prev: any) => {
+            if (!prev) return prev
+            const isNewAdminMessage = data.messages.length > (prev.chat_messages?.length || 0) &&
+                                      data.messages[data.messages.length - 1].sender === 'admin'
+            if (isNewAdminMessage) {
+              setUnreadChat(true)
+            }
+            return { ...prev, chat_messages: data.messages }
+          })
+        }
+      } catch (e) {}
+    }, 5000)
+    chatIntervalRef.current = interval
+    return () => clearInterval(interval)
+  }, [phase, authHeader, service])
+
+  async function sendMessage() {
+    if (!chatMessage.trim()) return
+    setSaving(true)
+    try {
+      const res = await fetch('/api/medical/doctor-update', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': authHeader },
+        body: JSON.stringify({ action: 'send_message', sender: 'doctor', text: chatMessage }),
+      })
+      const data = await res.json()
+      if (data.success) {
+        setService((prev: any) => ({ ...prev, chat_messages: data.messages }))
+        setChatMessage('')
+      }
+    } catch(e) {}
+    setSaving(false)
+  }
 
   // ── Avanzar status ──────────────────────────────────────────────────────
   async function advanceStatus() {
@@ -520,6 +572,13 @@ export default function DoctorAccessPage() {
             <TabBtn active={activeSection === 'photos'} onClick={() => setActiveSection('photos')}>
               <Camera className="w-3.5 h-3.5" /> Fotos
             </TabBtn>
+            <TabBtn active={activeSection === 'chat'} onClick={() => { setActiveSection('chat'); setUnreadChat(false) }}>
+              <div className="relative">
+                <MessageSquare className="w-3.5 h-3.5" />
+                {unreadChat && <span className="absolute -top-1 -right-1 w-2 h-2 bg-red-500 rounded-full animate-pulse shadow-sm" />}
+              </div>
+              <span className="hidden sm:inline">Chat</span>
+            </TabBtn>
           </div>
         )}
 
@@ -611,6 +670,55 @@ export default function DoctorAccessPage() {
               >
                 {saving ? 'Guardando...' : '✓ Guardar Clínica'}
               </button>
+            </div>
+          </Card>
+        )}
+
+        {/* ── CHAT ── */}
+        {activeSection === 'chat' && (
+          <Card>
+            <CardHeader icon={<MessageSquare className="w-4 h-4" />} title="Chat Operativo" />
+            <div className="p-4 flex flex-col h-[400px]">
+              <div className="flex-1 overflow-y-auto space-y-3 mb-4 pr-1 flex flex-col">
+                {!service?.chat_messages?.length && (
+                  <div className="text-center text-slate-400 text-sm mt-10">No hay mensajes. Asegúrate de tener conexión.</div>
+                )}
+                {service?.chat_messages?.map((msg: any, i: number) => {
+                  const isDoc = msg.sender === 'doctor'
+                  return (
+                    <div key={i} className={`flex flex-col ${isDoc ? 'items-end' : 'items-start'}`}>
+                      <div className={`px-4 py-2 rounded-2xl max-w-[85%] text-sm shadow-sm ${
+                        isDoc ? 'bg-emerald-100 text-emerald-900 rounded-tr-sm' : 'bg-slate-100 text-slate-800 rounded-tl-sm'
+                      }`}>
+                        {msg.text}
+                      </div>
+                      <span className="text-[10px] text-slate-400 mt-1 px-1">
+                        {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      </span>
+                    </div>
+                  )
+                })}
+              </div>
+              
+              {!isClosed && (
+                <div className="flex items-center gap-2 border-t border-slate-100 pt-3">
+                  <input
+                    value={chatMessage}
+                    onChange={e => setChatMessage(e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && sendMessage()}
+                    placeholder="Escribe tu mensaje..."
+                    className="flex-1 border border-slate-300 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-emerald-500 outline-none"
+                    disabled={saving}
+                  />
+                  <button
+                    onClick={sendMessage}
+                    disabled={!chatMessage.trim() || saving}
+                    className="w-10 h-10 shrink-0 bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-300 text-white rounded-full flex items-center justify-center transition-colors shadow-md"
+                  >
+                    <Send className="w-4 h-4" />
+                  </button>
+                </div>
+              )}
             </div>
           </Card>
         )}

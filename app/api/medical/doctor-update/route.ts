@@ -143,22 +143,24 @@ export async function POST(req: NextRequest) {
       const { signatureDataUrl, type = 'paciente' } = body
       if (!signatureDataUrl) return NextResponse.json({ error: 'signatureDataUrl requerida.' }, { status: 400 })
 
-      // Decode base64
-      const base64Data = signatureDataUrl.replace(/^data:image\/\w+;base64,/, '')
-      const buffer = Buffer.from(base64Data, 'base64')
+      // Decode base64 de manera robusta
+      const fetched = await fetch(signatureDataUrl)
+      const blob = await fetched.blob()
+      const arrayBuffer = await blob.arrayBuffer()
       const filename = `medical/${tokenRow.service_id}/firma_${type}_${Date.now()}.png`
 
-      // Upload with admin privileges (bypassing RLS)
+      // Upload with admin privileges
       const { data: uploadData, error: uploadErr } = await admin
         .storage
         .from('evidence')
-        .upload(filename, buffer, {
+        .upload(filename, arrayBuffer, {
           contentType: 'image/png',
           upsert: true
         })
       
       if (uploadErr) {
-        return NextResponse.json({ error: 'Error al subir la firma.' }, { status: 500 })
+        console.error('Storage Upload Error:', uploadErr)
+        return NextResponse.json({ error: 'Error al subir la firma.', details: uploadErr.message }, { status: 500 })
       }
 
       const publicUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/evidence/${filename}`
@@ -170,6 +172,43 @@ export async function POST(req: NextRequest) {
         .eq('id', tokenRow.service_id)
 
       return NextResponse.json({ success: true, publicUrl })
+    }
+
+    // ── Acción: Ver mensajes del chat ────────────────────────────────────
+    if (action === 'get_chat') {
+      const { data: service } = await admin
+        .from('medical_services')
+        .select('chat_messages')
+        .eq('id', tokenRow.service_id)
+        .single()
+      
+      return NextResponse.json({ success: true, messages: service?.chat_messages || [] })
+    }
+
+    // ── Acción: Enviar mensaje de chat ────────────────────────────────────
+    if (action === 'send_message') {
+      const { text, sender } = body
+      if (!text) return NextResponse.json({ error: 'El texto está vacío.' }, { status: 400 })
+      
+      const { data: service } = await admin
+        .from('medical_services')
+        .select('chat_messages')
+        .eq('id', tokenRow.service_id)
+        .single()
+        
+      const messages = service?.chat_messages || []
+      messages.push({
+        sender: sender || 'doctor',
+        text: text.trim(),
+        timestamp: new Date().toISOString()
+      })
+      
+      await admin
+        .from('medical_services')
+        .update({ chat_messages: messages })
+        .eq('id', tokenRow.service_id)
+        
+      return NextResponse.json({ success: true, messages })
     }
 
     return NextResponse.json({ error: 'Acción no reconocida.' }, { status: 400 })
