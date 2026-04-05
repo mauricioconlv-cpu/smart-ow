@@ -131,6 +131,29 @@ export default function RegisterPage() {
             </div>
           </div>
 
+          {/* Selección de Módulos */}
+          <div className="space-y-3 pt-2">
+            <h3 className="block text-xs font-semibold text-slate-600 uppercase tracking-wide">
+              Selecciona los Módulos de Operación
+            </h3>
+            
+            <label className="flex items-start gap-3 p-4 border border-slate-200 rounded-xl cursor-pointer hover:bg-slate-50 transition-colors shadow-sm select-none">
+              <input type="checkbox" name="module_tow" value="true" defaultChecked className="mt-0.5 w-5 h-5 text-blue-600 rounded border-gray-300 focus:ring-blue-500" />
+              <div>
+                <p className="text-sm font-bold text-slate-800">🚜 Asistencia Vial y Grúas</p>
+                <p className="text-xs text-slate-500 mt-1 leading-relaxed">Gestión de flotilla, operadores en mapa, cobros a aseguradoras y bitácora en tiempo real.</p>
+              </div>
+            </label>
+
+            <label className="flex items-start gap-3 p-4 border border-slate-200 rounded-xl cursor-pointer hover:bg-slate-50 transition-colors shadow-sm select-none">
+              <input type="checkbox" name="module_medical" value="true" className="mt-0.5 w-5 h-5 text-emerald-600 rounded border-gray-300 focus:ring-emerald-500" />
+              <div>
+                <p className="text-sm font-bold text-slate-800">⚕️ Asistencia Médica a Domicilio</p>
+                <p className="text-xs text-slate-500 mt-1 leading-relaxed">Expedientes clínicos, emisión de FRAPs, recetas digitales, firmas de pacientes y rastreo de doctores.</p>
+              </div>
+            </label>
+          </div>
+
           {/* Lo que incluye */}
           <div className="bg-blue-50 border border-blue-100 rounded-lg p-4 text-xs text-blue-800 space-y-1">
             <p className="font-semibold mb-2">Tu empresa incluye desde el primer día:</p>
@@ -138,7 +161,8 @@ export default function RegisterPage() {
               'Dashboard completamente privado',
               'Flotilla de grúas propia',
               'Usuarios y operadores ilimitados',
-              'Módulo de servicios con folio propio',
+              'Usuarios y operadores ilimitados',
+              'Cotizador y cobros de servicios',
               'Aseguradoras y tarifas independientes',
             ].map(item => (
               <p key={item} className="flex items-center gap-1.5">

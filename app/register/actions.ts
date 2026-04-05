@@ -17,6 +17,12 @@ export async function requestRegistration(prevState: any, formData: FormData) {
   const email       = (formData.get('email') as string)?.trim().toLowerCase()
   const phone       = (formData.get('phone') as string)?.trim()
   const numTrucks   = parseInt(formData.get('numTrucks') as string) || 0
+  const wantsTow    = formData.get('module_tow') === 'true'
+  const wantsMedical = formData.get('module_medical') === 'true'
+
+  if (!wantsTow && !wantsMedical) {
+    return { error: 'Debes seleccionar al menos un módulo de operación.' }
+  }
 
   if (!companyName || !fullName || !email || !phone) {
     return { error: 'Todos los campos son obligatorios.' }
@@ -45,6 +51,8 @@ export async function requestRegistration(prevState: any, formData: FormData) {
       phone,
       num_trucks:   numTrucks,
       status:       'pending',
+      wants_tow_module: wantsTow,
+      wants_medical_module: wantsMedical,
     })
 
   if (insertErr) {
@@ -71,7 +79,11 @@ export async function approveRegistration(requestId: string) {
   // 1. Crear empresa
   const { data: company, error: companyErr } = await supabaseAdmin
     .from('companies')
-    .insert({ name: req.company_name })
+    .insert({ 
+      name: req.company_name,
+      has_tow_module: req.wants_tow_module ?? true,
+      has_medical_module: req.wants_medical_module ?? false
+    })
     .select('id')
     .single()
 

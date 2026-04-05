@@ -12,6 +12,8 @@ type Request = {
   email: string
   phone: string
   num_trucks: number
+  wants_tow_module?: boolean
+  wants_medical_module?: boolean
   created_at: string
 }
 
@@ -138,6 +140,21 @@ export default function RegistrationRequestsPanel() {
                           <Truck className="w-3.5 h-3.5" />{req.num_trucks} unidad(es)
                         </span>
                       </div>
+                      
+                      {/* Módulos solicitados */}
+                      <div className="flex gap-2 py-1">
+                        {req.wants_tow_module && (
+                          <span className="text-[10px] bg-blue-100 text-blue-800 border border-blue-200 px-2 py-0.5 rounded-full font-bold uppercase tracking-wider">
+                            🚜 Asistencia Vial
+                          </span>
+                        )}
+                        {req.wants_medical_module && (
+                          <span className="text-[10px] bg-emerald-100 text-emerald-800 border border-emerald-200 px-2 py-0.5 rounded-full font-bold uppercase tracking-wider">
+                            ⚕️ Asistencia Médica
+                          </span>
+                        )}
+                      </div>
+
                       <p className="text-xs text-slate-400">
                         Recibida: {new Date(req.created_at).toLocaleString('es-MX', { dateStyle: 'medium', timeStyle: 'short' })}
                       </p>

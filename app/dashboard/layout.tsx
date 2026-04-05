@@ -27,12 +27,12 @@ export default async function DashboardLayout({
     .eq('id', user.id)
     .single()
 
-  // Obtener logo de la empresa
-  let company: { name: string; logo_url: string | null } | null = null
+  // Obtener logo y configuración de la empresa
+  let company: { name: string; logo_url: string | null; has_tow_module: boolean; has_medical_module: boolean } | null = null
   if (profile?.company_id) {
     const { data } = await supabase
       .from('companies')
-      .select('name, logo_url')
+      .select('name, logo_url, has_tow_module, has_medical_module')
       .eq('id', profile.company_id)
       .single()
     company = data
@@ -49,15 +49,28 @@ export default async function DashboardLayout({
     redirect('/login')
   }
 
-  const navLinks = [
+  const navLinks: { href: string, icon: any, label: string, live?: boolean }[] = [
     { href: '/dashboard',         icon: Map,         label: 'Monitor en Vivo', live: true },
-    { href: '/dashboard/services',icon: Radio,        label: 'Servicios' },
-    { href: '/dashboard/medical', icon: Stethoscope,  label: 'Servicios Médicos' },
-    { href: '/dashboard/reports', icon: FileText,     label: 'Reportes e Historial' },
-    { href: '/dashboard/clients', icon: Users,        label: 'Aseguradoras' },
-    { href: '/dashboard/fleet',   icon: Truck,        label: 'Flotilla de Grúas' },
-    { href: '/dashboard/users',   icon: Users,        label: 'Usuarios y Empleados' },
   ]
+
+  if (company?.has_tow_module !== false) {
+    navLinks.push({ href: '/dashboard/services', icon: Radio,        label: 'Servicios' })
+  }
+  
+  if (company?.has_medical_module !== false) {
+    navLinks.push({ href: '/dashboard/medical',  icon: Stethoscope,  label: 'Servicios Médicos' })
+  }
+
+  navLinks.push(
+    { href: '/dashboard/reports', icon: FileText,     label: 'Reportes e Historial' },
+    { href: '/dashboard/clients', icon: Users,        label: 'Aseguradoras' }
+  )
+
+  if (company?.has_tow_module !== false) {
+    navLinks.push({ href: '/dashboard/fleet',   icon: Truck,        label: 'Flotilla de Grúas' })
+  }
+
+  navLinks.push({ href: '/dashboard/users',   icon: Users,        label: 'Usuarios y Empleados' })
 
   if (profile?.role === 'admin' || profile?.is_supervisor) {
     navLinks.push({ href: '/dashboard/payroll', icon: Users, label: 'Nóminas y Asistencia' })
